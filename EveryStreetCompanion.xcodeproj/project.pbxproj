@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 63;
+	objectVersion = 77;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -133,7 +133,7 @@
 		D88D2D8FAB34C2E5611E52DB /* CoverageAreasTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverageAreasTabView.swift; sourceTree = "<group>"; };
 		D8B21B357B1453541104B62D /* CoverageAPIParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverageAPIParser.swift; sourceTree = "<group>"; };
 		EF581B385B71BBCA41C9A268 /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
-		F6C0992BF64B4FDC3F275C44 /* EveryStreetCompanion.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EveryStreetCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F6C0992BF64B4FDC3F275C44 /* EveryStreetCompanion.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = EveryStreetCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F9D2C0713D8F35A517A40821 /* JSONHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONHelpers.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -443,6 +443,7 @@
 				LastUpgradeCheck = 2600;
 				TargetAttributes = {
 					6594437C837335A814C63108 = {
+						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -457,6 +458,7 @@
 			);
 			mainGroup = 612EA1A30EB6E88F6F5675DC;
 			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -557,7 +559,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = CZ3N26YJ75;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_TESTABILITY = YES;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
@@ -638,7 +640,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = CZ3N26YJ75;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_TESTABILITY = YES;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;

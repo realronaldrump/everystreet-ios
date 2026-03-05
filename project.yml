@@ -25,6 +25,7 @@ targets:
       - path: Resources
         excludes:
           - "**/*.md"
+      - path: Resources/PrivacyInfo.xcprivacy
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.everystreet.companion
