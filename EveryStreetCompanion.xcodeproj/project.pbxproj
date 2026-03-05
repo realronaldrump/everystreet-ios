@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		05F4A40C848D45245AADBC1C /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 323E7416FE2D62E8DFC5E966 /* AppModel.swift */; };
 		06A3707C54FBEE45BCE3BAD8 /* EveryStreetCompanionApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AD21E4CD5CA8E77A7A56A3B /* EveryStreetCompanionApp.swift */; };
+		0C1A8FE4857E7737A9E6C806 /* CoverageAreaMapViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94579BA64E7B9FCDC55F61D6 /* CoverageAreaMapViewModel.swift */; };
 		0C88AC08B31E4D76918CD51D /* CoordinateCoding.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0EB1E95A962B91573E916C5 /* CoordinateCoding.swift */; };
 		0D224A64821170A2CBEC7319 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 348839150B80CBFB5AB2C886 /* ContentView.swift */; };
 		2074669201667DBAE7881972 /* TripsTabViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58A7C6626DC02185E76CA8E9 /* TripsTabViewModel.swift */; };
@@ -16,7 +17,10 @@
 		30C058378AE868E239A0E22B /* APIError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 620631E74AD2AB4ED323A477 /* APIError.swift */; };
 		331127533A67089612FA4896 /* GeometrySimplifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B86654BEC1033AB0398B24D /* GeometrySimplifier.swift */; };
 		3334E4E18D26A9AD7FB46C0B /* InsightsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 789F4DFECB82513EF026CBB4 /* InsightsViewModel.swift */; };
+		3BC6EEE829454B358CC690F5 /* CoverageAPIParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9159CF7A80552FFCA42AD3C4 /* CoverageAPIParserTests.swift */; };
+		40B95EF9D57ACDE5145E368E /* CoverageAreasTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D88D2D8FAB34C2E5611E52DB /* CoverageAreasTabView.swift */; };
 		46BBADD5B4F0E1CF6B3D4E86 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35CA3E42C57EDFC3279B063C /* APIClient.swift */; };
+		4CB49AF4FE3C491959ED4B51 /* CoverageAreasViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60A20EC467404B9E8D3CACFE /* CoverageAreasViewModel.swift */; };
 		4CB96410675AD1814A4C17F2 /* DashboardModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DFA1AB26EE4FAFA8BE0CB7E /* DashboardModels.swift */; };
 		52ECCBAD8CD43AB717BE3847 /* TripModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15049C6D933B0763BCC60430 /* TripModels.swift */; };
 		53A7C0A1D165253B8825655D /* InsightsTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FF6454C6ED69042D435D80B /* InsightsTabView.swift */; };
@@ -41,14 +45,17 @@
 		A9605240B74650783D946510 /* TripAPIParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67289BBF80E99AA9E24FA50D /* TripAPIParserTests.swift */; };
 		AD75C5A1EF8897CA3BF90660 /* GlobalFilterBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FD8F7FEDD56C41BE06A75E4 /* GlobalFilterBar.swift */; };
 		ADB45DF9BA08745A51697979 /* PlacesTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A16904A29B1B132DB5E30A9 /* PlacesTabView.swift */; };
+		B52DDD9FF8B0599CF4892F68 /* CoverageAPIParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8B21B357B1453541104B62D /* CoverageAPIParser.swift */; };
 		BE0E95838247CF4B7549D5A1 /* SyncStatusBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EE6E2695B250A8E5AFCE8CC /* SyncStatusBanner.swift */; };
 		BFA1A5000CEACAB4DE5A8A5F /* DateRangePreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 713430DF322C8C2134BACEF8 /* DateRangePreset.swift */; };
 		C0AE66C7D2DB6B029B9AE8D3 /* JSONHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9D2C0713D8F35A517A40821 /* JSONHelpers.swift */; };
 		C675C078757E1163A9F290A1 /* DateInterval+Helpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A060223FFC977E05230E1B89 /* DateInterval+Helpers.swift */; };
 		CFE9DD008D473929F0C3ACD2 /* DashboardAPIParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = D35318290F387B4AB7F4880B /* DashboardAPIParser.swift */; };
 		E1C29E535E7BE81CA140F132 /* PlacesAPIParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF0AACBEAA748A639FBC280C /* PlacesAPIParser.swift */; };
+		E2C58508BCD4D12CDCB4BF73 /* CoverageRepositoryLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F408EF2E459772997F31738 /* CoverageRepositoryLive.swift */; };
 		E85062C17FE65ECB71CE254D /* PlacesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ED33AEE32F8514B5208D661 /* PlacesViewModel.swift */; };
 		EA13B5AE7909CC31C5415D84 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14CA7344624A8BECB0D89118 /* SettingsViewModel.swift */; };
+		EE38A6F17F29C7290151DD27 /* CoverageModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6119E14A220992C662D7648B /* CoverageModels.swift */; };
 		EE9D65D93CB8BF9D448982E8 /* AppLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8C9039BE33D4DB710031EA8 /* AppLogger.swift */; };
 		F0643238B9E41B52BC2092CD /* TripsRepositoryLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A793BEA93609171148FF21F /* TripsRepositoryLive.swift */; };
 		F3423B70525FB3B6BC33EEE6 /* MapGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BE7B7D1AE8579DEDE7323D4 /* MapGeometry.swift */; };
@@ -79,6 +86,7 @@
 		1ED33AEE32F8514B5208D661 /* PlacesViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlacesViewModel.swift; sourceTree = "<group>"; };
 		20323CC71B58C901A8FC3B4B /* TripDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripDetailViewModel.swift; sourceTree = "<group>"; };
 		2DB437D16D17EA8D876F47C4 /* PersistenceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceController.swift; sourceTree = "<group>"; };
+		2F408EF2E459772997F31738 /* CoverageRepositoryLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverageRepositoryLive.swift; sourceTree = "<group>"; };
 		323E7416FE2D62E8DFC5E966 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		33A6541C5AD7D3BD70989A33 /* MemoryPressureMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryPressureMonitor.swift; sourceTree = "<group>"; };
 		348839150B80CBFB5AB2C886 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -90,6 +98,8 @@
 		5718F8A840DA2675AA4C9AE0 /* PlacesRepositoryLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlacesRepositoryLive.swift; sourceTree = "<group>"; };
 		58A7C6626DC02185E76CA8E9 /* TripsTabViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripsTabViewModel.swift; sourceTree = "<group>"; };
 		5AD21E4CD5CA8E77A7A56A3B /* EveryStreetCompanionApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EveryStreetCompanionApp.swift; sourceTree = "<group>"; };
+		60A20EC467404B9E8D3CACFE /* CoverageAreasViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverageAreasViewModel.swift; sourceTree = "<group>"; };
+		6119E14A220992C662D7648B /* CoverageModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverageModels.swift; sourceTree = "<group>"; };
 		620631E74AD2AB4ED323A477 /* APIError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIError.swift; sourceTree = "<group>"; };
 		67289BBF80E99AA9E24FA50D /* TripAPIParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripAPIParserTests.swift; sourceTree = "<group>"; };
 		6A793BEA93609171148FF21F /* TripsRepositoryLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripsRepositoryLive.swift; sourceTree = "<group>"; };
@@ -106,7 +116,9 @@
 		82FC0C3E3B1995864661A17C /* TripDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripDetailView.swift; sourceTree = "<group>"; };
 		88E41FCEB33C1D2901A71C1F /* TaskRetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskRetry.swift; sourceTree = "<group>"; };
 		8FF6454C6ED69042D435D80B /* InsightsTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsightsTabView.swift; sourceTree = "<group>"; };
+		9159CF7A80552FFCA42AD3C4 /* CoverageAPIParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverageAPIParserTests.swift; sourceTree = "<group>"; };
 		936AF43D0310FED68B253E48 /* CachedModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CachedModels.swift; sourceTree = "<group>"; };
+		94579BA64E7B9FCDC55F61D6 /* CoverageAreaMapViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverageAreaMapViewModel.swift; sourceTree = "<group>"; };
 		9A16904A29B1B132DB5E30A9 /* PlacesTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlacesTabView.swift; sourceTree = "<group>"; };
 		9BB88300503D30AF26BC9011 /* AppSettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettingsStore.swift; sourceTree = "<group>"; };
 		9BE7B7D1AE8579DEDE7323D4 /* MapGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapGeometry.swift; sourceTree = "<group>"; };
@@ -118,6 +130,8 @@
 		C8C425545541F6BC08E3D776 /* Repositories.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Repositories.swift; sourceTree = "<group>"; };
 		CF0AACBEAA748A639FBC280C /* PlacesAPIParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlacesAPIParser.swift; sourceTree = "<group>"; };
 		D35318290F387B4AB7F4880B /* DashboardAPIParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardAPIParser.swift; sourceTree = "<group>"; };
+		D88D2D8FAB34C2E5611E52DB /* CoverageAreasTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverageAreasTabView.swift; sourceTree = "<group>"; };
+		D8B21B357B1453541104B62D /* CoverageAPIParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverageAPIParser.swift; sourceTree = "<group>"; };
 		EF581B385B71BBCA41C9A268 /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
 		F6C0992BF64B4FDC3F275C44 /* EveryStreetCompanion.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EveryStreetCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F9D2C0713D8F35A517A40821 /* JSONHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONHelpers.swift; sourceTree = "<group>"; };
@@ -136,6 +150,7 @@
 		1599A74FA170755FCEA40A0A /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				6119E14A220992C662D7648B /* CoverageModels.swift */,
 				7DFA1AB26EE4FAFA8BE0CB7E /* DashboardModels.swift */,
 				BD85F55C794D7F1366989E7D /* PlaceModels.swift */,
 				15049C6D933B0763BCC60430 /* TripModels.swift */,
@@ -148,6 +163,7 @@
 			children = (
 				35CA3E42C57EDFC3279B063C /* APIClient.swift */,
 				620631E74AD2AB4ED323A477 /* APIError.swift */,
+				D8B21B357B1453541104B62D /* CoverageAPIParser.swift */,
 				D35318290F387B4AB7F4880B /* DashboardAPIParser.swift */,
 				F9D2C0713D8F35A517A40821 /* JSONHelpers.swift */,
 				CF0AACBEAA748A639FBC280C /* PlacesAPIParser.swift */,
@@ -168,12 +184,23 @@
 		231C30D01FE7A2CFCFB19491 /* Repositories */ = {
 			isa = PBXGroup;
 			children = (
+				2F408EF2E459772997F31738 /* CoverageRepositoryLive.swift */,
 				095D9A4E098B745E3E53C4E0 /* DashboardRepositoryLive.swift */,
 				5718F8A840DA2675AA4C9AE0 /* PlacesRepositoryLive.swift */,
 				71B44FC6B096E48BD0BD5536 /* SettingsRepositoryLive.swift */,
 				6A793BEA93609171148FF21F /* TripsRepositoryLive.swift */,
 			);
 			path = Repositories;
+			sourceTree = "<group>";
+		};
+		2AABA373681B8F1C414FE722 /* Coverage */ = {
+			isa = PBXGroup;
+			children = (
+				94579BA64E7B9FCDC55F61D6 /* CoverageAreaMapViewModel.swift */,
+				D88D2D8FAB34C2E5611E52DB /* CoverageAreasTabView.swift */,
+				60A20EC467404B9E8D3CACFE /* CoverageAreasViewModel.swift */,
+			);
+			path = Coverage;
 			sourceTree = "<group>";
 		};
 		2BEB24CBF75F5AA16BFCCD0A /* Services */ = {
@@ -208,6 +235,7 @@
 		60A08D16E87F1C0A9A55AF85 /* Features */ = {
 			isa = PBXGroup;
 			children = (
+				2AABA373681B8F1C414FE722 /* Coverage */,
 				383DFF69C144D3FFE0609CDF /* Insights */,
 				9207555F6CCEE71A4AF4D5AF /* Map */,
 				F716D6C2208E701261418F21 /* Places */,
@@ -322,6 +350,7 @@
 		DAA30C4C3FD7ADF511F6B2ED /* EveryStreetCompanionTests */ = {
 			isa = PBXGroup;
 			children = (
+				9159CF7A80552FFCA42AD3C4 /* CoverageAPIParserTests.swift */,
 				4D4CFDF9AEC11F957A5281B0 /* DateIntervalWindowTests.swift */,
 				797567F5FA7FDC45D832759E /* GeometrySimplifierTests.swift */,
 				67289BBF80E99AA9E24FA50D /* TripAPIParserTests.swift */,
@@ -453,6 +482,12 @@
 				FA0DC8A3084C66B446FD5105 /* CachedModels.swift in Sources */,
 				0D224A64821170A2CBEC7319 /* ContentView.swift in Sources */,
 				0C88AC08B31E4D76918CD51D /* CoordinateCoding.swift in Sources */,
+				B52DDD9FF8B0599CF4892F68 /* CoverageAPIParser.swift in Sources */,
+				0C1A8FE4857E7737A9E6C806 /* CoverageAreaMapViewModel.swift in Sources */,
+				40B95EF9D57ACDE5145E368E /* CoverageAreasTabView.swift in Sources */,
+				4CB49AF4FE3C491959ED4B51 /* CoverageAreasViewModel.swift in Sources */,
+				EE38A6F17F29C7290151DD27 /* CoverageModels.swift in Sources */,
+				E2C58508BCD4D12CDCB4BF73 /* CoverageRepositoryLive.swift in Sources */,
 				CFE9DD008D473929F0C3ACD2 /* DashboardAPIParser.swift in Sources */,
 				4CB96410675AD1814A4C17F2 /* DashboardModels.swift in Sources */,
 				6AB22A402523F4B8C0F5632D /* DashboardRepositoryLive.swift in Sources */,
@@ -495,6 +530,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3BC6EEE829454B358CC690F5 /* CoverageAPIParserTests.swift in Sources */,
 				865CE476DBF351385F49B47D /* DateIntervalWindowTests.swift in Sources */,
 				8E2FBAAE554BD0B08E04F2D5 /* GeometrySimplifierTests.swift in Sources */,
 				A9605240B74650783D946510 /* TripAPIParserTests.swift in Sources */,

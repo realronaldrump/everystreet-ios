@@ -2,15 +2,42 @@ import MapKit
 import Observation
 import SwiftUI
 
+enum MapLayerMode: String, CaseIterable, Identifiable {
+    case trips
+    case coverage
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .trips: "Trips"
+        case .coverage: "Coverage Streets"
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class MapTabViewModel {
     private let repository: TripsRepository
+    private let coverageRepository: CoverageRepository
     private let coordinateCache: LRUCoordinateCache
+
+    private var coverageFetchTask: Task<Void, Never>?
+    private var coverageRequestToken = UUID()
+    private var areaBoundingBoxes: [String: TripBoundingBox] = [:]
 
     var allTrips: [TripSummary] = []
     var visibleTrips: [TripSummary] = []
     var selectedTrip: TripSummary?
+
+    var selectedLayer: MapLayerMode = .trips
+    var coverageAreas: [CoverageArea] = []
+    var selectedCoverageAreaID: String?
+    var coverageFilter: CoverageStreetFilter = .all
+    var coverageSegments: [CoverageStreetSegment] = []
+    var coverageTotalInViewport = 0
+    var coverageTruncated = false
 
     var cameraPosition: MapCameraPosition = .region(
         MKCoordinateRegion(
@@ -30,8 +57,44 @@ final class MapTabViewModel {
     var isLoading = false
     var errorMessage: String?
 
-    init(repository: TripsRepository, coordinateCache: LRUCoordinateCache) {
+    var isCoverageLoading = false
+    var coverageErrorMessage: String?
+
+    var selectedCoverageArea: CoverageArea? {
+        guard let selectedCoverageAreaID else { return nil }
+        return coverageAreas.first(where: { $0.id == selectedCoverageAreaID })
+    }
+
+    var visibleCoverageSegments: [CoverageStreetSegment] {
+        coverageSegments.filter { coverageFilter.matches($0.status) }
+    }
+
+    var coverageCounts: (driven: Int, undriven: Int, undriveable: Int) {
+        coverageSegments.reduce(into: (driven: 0, undriven: 0, undriveable: 0)) { result, segment in
+            switch segment.status {
+            case .driven:
+                result.driven += 1
+            case .undriven:
+                result.undriven += 1
+            case .undriveable:
+                result.undriveable += 1
+            case .unknown:
+                break
+            }
+        }
+    }
+
+    var isCurrentLayerLoading: Bool {
+        selectedLayer == .trips ? isLoading : isCoverageLoading
+    }
+
+    var currentLayerErrorMessage: String? {
+        selectedLayer == .trips ? errorMessage : coverageErrorMessage
+    }
+
+    init(repository: TripsRepository, coverageRepository: CoverageRepository, coordinateCache: LRUCoordinateCache) {
         self.repository = repository
+        self.coverageRepository = coverageRepository
         self.coordinateCache = coordinateCache
     }
 
@@ -57,26 +120,76 @@ final class MapTabViewModel {
         }
 
         isLoading = false
+        await loadCoverageAreasIfNeeded()
+
+        if selectedLayer == .coverage {
+            scheduleCoverageStreetFetch(force: true)
+        }
     }
 
     func refresh(query: TripQuery, appModel: AppModel) async {
-        appModel.markSyncStarted()
+        await refreshCurrentLayer(query: query, appModel: appModel)
+    }
 
-        do {
-            let trips = try await repository.refresh(query: query)
-            allTrips = trips
-            updateVisibleTrips()
-            appModel.markSyncFinished()
-        } catch {
-            appModel.markSyncFailure(error.localizedDescription)
-            errorMessage = error.localizedDescription
+    func refreshCurrentLayer(query: TripQuery, appModel: AppModel) async {
+        switch selectedLayer {
+        case .trips:
+            appModel.markSyncStarted()
+
+            do {
+                let trips = try await repository.refresh(query: query)
+                allTrips = trips
+                updateVisibleTrips()
+                appModel.markSyncFinished()
+            } catch {
+                appModel.markSyncFailure(error.localizedDescription)
+                errorMessage = error.localizedDescription
+            }
+        case .coverage:
+            await refreshCoverageLayer()
         }
+    }
+
+    func setLayer(_ layer: MapLayerMode) async {
+        guard selectedLayer != layer else { return }
+        selectedLayer = layer
+
+        switch layer {
+        case .trips:
+            coverageFetchTask?.cancel()
+            isCoverageLoading = false
+        case .coverage:
+            await loadCoverageAreasIfNeeded()
+            if let areaID = selectedCoverageAreaID {
+                await loadCoverageAreaDetailIfNeeded(areaID: areaID, focusCamera: true)
+            }
+            scheduleCoverageStreetFetch(force: true)
+        }
+    }
+
+    func selectCoverageArea(_ areaID: String) async {
+        guard selectedCoverageAreaID != areaID else { return }
+        selectedCoverageAreaID = areaID
+        coverageSegments = []
+        coverageTotalInViewport = 0
+        coverageTruncated = false
+
+        await loadCoverageAreaDetailIfNeeded(areaID: areaID, focusCamera: true)
+        scheduleCoverageStreetFetch(force: true)
+    }
+
+    func setCoverageFilter(_ filter: CoverageStreetFilter) {
+        coverageFilter = filter
     }
 
     func update(region: MKCoordinateRegion) {
         currentRegion = region
         zoomBucket = MapGeometry.zoomBucket(for: region)
         updateVisibleTrips()
+
+        if selectedLayer == .coverage {
+            scheduleCoverageStreetFetch()
+        }
     }
 
     func coordinates(for trip: TripSummary, level: GeometryDetailLevel) -> [CLLocationCoordinate2D] {
@@ -88,6 +201,126 @@ final class MapTabViewModel {
         let coords = trip.geometry(for: level)
         coordinateCache.set(coords, for: key)
         return coords
+    }
+
+    private func loadCoverageAreasIfNeeded() async {
+        await loadCoverageAreas(force: false)
+    }
+
+    private func refreshCoverageLayer() async {
+        await loadCoverageAreas(force: true)
+        scheduleCoverageStreetFetch(force: true)
+    }
+
+    private func loadCoverageAreas(force: Bool) async {
+        guard force || coverageAreas.isEmpty else { return }
+
+        isCoverageLoading = true
+        defer { isCoverageLoading = false }
+
+        do {
+            let areas = try await coverageRepository.loadCoverageAreas()
+            coverageAreas = areas
+            coverageErrorMessage = nil
+
+            if let selectedCoverageAreaID,
+               areas.contains(where: { $0.id == selectedCoverageAreaID })
+            {
+                // Keep selected area.
+            } else {
+                selectedCoverageAreaID = areas.first?.id
+            }
+
+            if let selectedCoverageAreaID {
+                await loadCoverageAreaDetailIfNeeded(areaID: selectedCoverageAreaID, focusCamera: false)
+            }
+        } catch {
+            coverageErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func loadCoverageAreaDetailIfNeeded(areaID: String, focusCamera: Bool) async {
+        if let cached = areaBoundingBoxes[areaID] {
+            if focusCamera {
+                applyCamera(for: cached)
+            }
+            return
+        }
+
+        do {
+            let detail = try await coverageRepository.loadCoverageAreaDetail(id: areaID)
+            if let boundingBox = detail.boundingBox {
+                areaBoundingBoxes[areaID] = boundingBox
+                if focusCamera {
+                    applyCamera(for: boundingBox)
+                }
+            }
+
+            if let index = coverageAreas.firstIndex(where: { $0.id == areaID }) {
+                coverageAreas[index] = detail.area
+            }
+        } catch {
+            coverageErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func scheduleCoverageStreetFetch(force: Bool = false) {
+        guard selectedLayer == .coverage,
+              let areaID = selectedCoverageAreaID
+        else {
+            return
+        }
+
+        let region = currentRegion
+        coverageFetchTask?.cancel()
+        coverageFetchTask = Task { [weak self] in
+            guard let self else { return }
+            if !force {
+                try? await Task.sleep(nanoseconds: 220_000_000)
+            }
+            await self.fetchCoverageStreets(areaID: areaID, region: region)
+        }
+    }
+
+    private func fetchCoverageStreets(areaID: String, region: MKCoordinateRegion) async {
+        let requestToken = UUID()
+        coverageRequestToken = requestToken
+        isCoverageLoading = true
+
+        let viewport = MapGeometry.boundingBox(for: region).expanded(by: 0.08)
+
+        do {
+            let snapshot = try await coverageRepository.loadStreets(areaID: areaID, boundingBox: viewport)
+            guard !Task.isCancelled, requestToken == coverageRequestToken else { return }
+
+            coverageSegments = snapshot.segments
+            coverageTotalInViewport = snapshot.totalInViewport
+            coverageTruncated = snapshot.truncated
+            coverageErrorMessage = nil
+            isCoverageLoading = false
+        } catch {
+            guard !Task.isCancelled, requestToken == coverageRequestToken else { return }
+            coverageErrorMessage = error.localizedDescription
+            isCoverageLoading = false
+        }
+    }
+
+    private func applyCamera(for boundingBox: TripBoundingBox) {
+        let center = CLLocationCoordinate2D(
+            latitude: (boundingBox.minLat + boundingBox.maxLat) / 2,
+            longitude: (boundingBox.minLon + boundingBox.maxLon) / 2
+        )
+
+        let region = MKCoordinateRegion(
+            center: center,
+            span: MKCoordinateSpan(
+                latitudeDelta: max((boundingBox.maxLat - boundingBox.minLat) * 1.35, 0.02),
+                longitudeDelta: max((boundingBox.maxLon - boundingBox.minLon) * 1.35, 0.02)
+            )
+        )
+
+        currentRegion = region
+        cameraPosition = .region(region)
     }
 
     private func updateVisibleTrips() {

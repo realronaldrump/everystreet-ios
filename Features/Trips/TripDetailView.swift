@@ -16,21 +16,20 @@ struct TripDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: AppTheme.spacingLG) {
                 if let detail = viewModel.detail {
                     mapSection(detail)
                     statsSection(detail)
-                    placeSection(detail)
+                    routeSection(detail)
                     relatedSection
                 } else if viewModel.isLoading {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, minHeight: 240)
+                    loadingView
                 } else if let error = viewModel.errorMessage {
-                    Text(error)
-                        .foregroundStyle(.red)
+                    errorView(error)
                 }
             }
-            .padding(12)
+            .padding(.horizontal, AppTheme.spacingLG)
+            .padding(.bottom, AppTheme.spacingXXL)
         }
         .background(LinearGradient.appBackground.ignoresSafeArea())
         .navigationTitle("Trip Details")
@@ -43,117 +42,213 @@ struct TripDetailView: View {
         }
     }
 
+    // MARK: - Map Section
+
     private func mapSection(_ detail: TripDetail) -> some View {
-        Map(position: $cameraPosition) {
-            if detail.rawGeometry.count > 1 {
-                MapPolyline(coordinates: detail.rawGeometry)
-                    .stroke(AppTheme.routeRecent, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
-            }
+        ZStack(alignment: .bottom) {
+            Map(position: $cameraPosition) {
+                if detail.rawGeometry.count > 1 {
+                    MapPolyline(coordinates: detail.rawGeometry)
+                        .stroke(
+                            LinearGradient(
+                                colors: [AppTheme.routeOld, AppTheme.routeRecent],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ),
+                            style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round)
+                        )
+                }
 
-            if let start = detail.startGeoPoint {
-                Annotation("Start", coordinate: start) {
-                    Image(systemName: "circle.fill")
-                        .foregroundStyle(.green)
+                if let start = detail.startGeoPoint {
+                    Annotation("Start", coordinate: start) {
+                        Circle()
+                            .fill(AppTheme.success)
+                            .frame(width: 12, height: 12)
+                            .overlay(Circle().stroke(.white, lineWidth: 2))
+                            .shadow(color: AppTheme.success.opacity(0.5), radius: 4)
+                    }
+                }
+
+                if let end = detail.destinationGeoPoint {
+                    Annotation("End", coordinate: end) {
+                        Image(systemName: "flag.fill")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(AppTheme.accentWarm)
+                            .shadow(color: AppTheme.accentWarm.opacity(0.5), radius: 4)
+                    }
                 }
             }
+            .mapStyle(.standard(elevation: .realistic))
+            .frame(height: 300)
 
-            if let end = detail.destinationGeoPoint {
-                Annotation("End", coordinate: end) {
-                    Image(systemName: "flag.checkered")
-                        .foregroundStyle(AppTheme.accentWarm)
-                }
-            }
+            // Gradient fade at bottom
+            LinearGradient(
+                colors: [.clear, AppTheme.background.opacity(0.6)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 60)
         }
-        .mapStyle(.standard(elevation: .realistic))
-        .frame(height: 280)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusXL, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(Color.white.opacity(0.15), lineWidth: 1)
+            RoundedRectangle(cornerRadius: AppTheme.radiusXL, style: .continuous)
+                .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
         )
     }
 
+    // MARK: - Stats Section
+
     private func statsSection(_ detail: TripDetail) -> some View {
-        LazyVGrid(columns: [.init(.flexible()), .init(.flexible())], spacing: 10) {
-            statCard("Distance", value: formatDistance(detail.distance))
-            statCard("Duration", value: formatDuration(detail.duration))
-            statCard("Avg Speed", value: formatSpeed(detail.avgSpeed))
-            statCard("Max Speed", value: formatSpeed(detail.maxSpeed))
-            statCard("Fuel", value: formatFuel(detail.fuelConsumed))
-            statCard("Idle", value: formatDuration(detail.totalIdleDuration))
+        LazyVGrid(columns: [.init(.flexible()), .init(.flexible())], spacing: AppTheme.spacingMD) {
+            StatCardView(title: "Distance", value: formatDistance(detail.distance), icon: "road.lanes", color: AppTheme.statDistance)
+            StatCardView(title: "Duration", value: formatDuration(detail.duration), icon: "clock.fill", color: AppTheme.statDuration)
+            StatCardView(title: "Avg Speed", value: formatSpeed(detail.avgSpeed), icon: "gauge.medium", color: AppTheme.statSpeed)
+            StatCardView(title: "Max Speed", value: formatSpeed(detail.maxSpeed), icon: "gauge.high", color: AppTheme.statMaxSpeed)
+            StatCardView(title: "Fuel", value: formatFuel(detail.fuelConsumed), icon: "fuelpump.fill", color: AppTheme.statFuel)
+            StatCardView(title: "Idle Time", value: formatDuration(detail.totalIdleDuration), icon: "pause.circle.fill", color: AppTheme.statIdle)
         }
     }
 
-    private func placeSection(_ detail: TripDetail) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Route")
-                .font(.headline)
+    // MARK: - Route Section
 
-            VStack(alignment: .leading, spacing: 8) {
-                Label(detail.startLocation?.formattedAddress ?? "Unknown start", systemImage: "arrowtriangle.right.circle.fill")
-                Label(detail.destination?.formattedAddress ?? "Unknown destination", systemImage: "mappin.and.ellipse")
+    private func routeSection(_ detail: TripDetail) -> some View {
+        VStack(alignment: .leading, spacing: AppTheme.spacingLG) {
+            SectionHeaderView("Route", icon: "point.topleft.down.to.point.bottomright.curvepath")
+
+            VStack(alignment: .leading, spacing: 0) {
+                // Start point
+                HStack(spacing: AppTheme.spacingMD) {
+                    VStack(spacing: 0) {
+                        Circle()
+                            .fill(AppTheme.success)
+                            .frame(width: 10, height: 10)
+                        Rectangle()
+                            .fill(AppTheme.divider)
+                            .frame(width: 1)
+                            .frame(maxHeight: .infinity)
+                    }
+                    .frame(width: 10)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("START")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(AppTheme.textTertiary)
+                            .tracking(0.8)
+                        Text(detail.startLocation?.formattedAddress ?? "Unknown")
+                            .font(.subheadline)
+                            .foregroundStyle(AppTheme.textSecondary)
+                    }
+                    .padding(.vertical, AppTheme.spacingSM)
+                }
+
+                // End point
+                HStack(spacing: AppTheme.spacingMD) {
+                    Circle()
+                        .fill(AppTheme.accentWarm)
+                        .frame(width: 10, height: 10)
+                        .frame(width: 10)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("DESTINATION")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(AppTheme.textTertiary)
+                            .tracking(0.8)
+                        Text(detail.destination?.formattedAddress ?? "Unknown")
+                            .font(.subheadline)
+                            .foregroundStyle(AppTheme.textSecondary)
+                    }
+                    .padding(.vertical, AppTheme.spacingSM)
+                }
             }
-            .font(.subheadline)
-            .foregroundStyle(AppTheme.textSecondary)
         }
         .glassCard()
     }
 
+    // MARK: - Related Trips
+
     private var relatedSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Related Trips")
-                .font(.headline)
+        VStack(alignment: .leading, spacing: AppTheme.spacingMD) {
+            SectionHeaderView("Related Trips", icon: "calendar")
 
             if viewModel.relatedTrips.isEmpty {
-                Text("No related trips found for this day.")
+                Text("No other trips on this day")
                     .font(.subheadline)
-                    .foregroundStyle(AppTheme.textSecondary)
+                    .foregroundStyle(AppTheme.textTertiary)
+                    .padding(.vertical, AppTheme.spacingSM)
             } else {
                 ForEach(viewModel.relatedTrips.prefix(6)) { trip in
                     NavigationLink {
                         TripDetailView(tripID: trip.transactionId, repository: repository)
                     } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: AppTheme.spacingMD) {
+                            Circle()
+                                .fill(AppTheme.accent.opacity(0.3))
+                                .frame(width: 6, height: 6)
+
+                            VStack(alignment: .leading, spacing: 2) {
                                 Text(trip.startTime, style: .time)
                                     .font(.subheadline.weight(.semibold))
-                                Text(trip.destination ?? trip.startLocation ?? "Unknown route")
+                                    .foregroundStyle(AppTheme.textPrimary)
+                                Text(trip.destination ?? trip.startLocation ?? "Unknown")
                                     .font(.caption)
-                                    .foregroundStyle(AppTheme.textSecondary)
+                                    .foregroundStyle(AppTheme.textTertiary)
                                     .lineLimit(1)
                             }
+
                             Spacer()
+
                             Text(formatDistance(trip.distance))
-                                .font(.caption.weight(.semibold))
+                                .font(.caption.weight(.semibold).monospacedDigit())
+                                .foregroundStyle(AppTheme.accent)
                         }
-                        .padding(10)
-                        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .padding(AppTheme.spacingMD)
+                        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.pressable)
                 }
             }
         }
         .glassCard()
     }
 
-    private func statCard(_ title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(AppTheme.textSecondary)
-            Text(value)
-                .font(.headline)
-                .foregroundStyle(AppTheme.textPrimary)
+    // MARK: - Loading & Error
+
+    private var loadingView: some View {
+        VStack(spacing: AppTheme.spacingLG) {
+            ProgressView()
+                .controlSize(.large)
+                .tint(AppTheme.accent)
+            Text("Loading trip details\u{2026}")
+                .font(.subheadline)
+                .foregroundStyle(AppTheme.textTertiary)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 300)
+    }
+
+    private func errorView(_ message: String) -> some View {
+        VStack(spacing: AppTheme.spacingMD) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.title2)
+                .foregroundStyle(AppTheme.error)
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(AppTheme.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
         .glassCard()
     }
+
+    // MARK: - Helpers
 
     private func cameraPositionForDetail(_ detail: TripDetail?) -> MapCameraPosition {
         guard let detail, !detail.rawGeometry.isEmpty else { return .automatic }
 
         if let bbox = TripBoundingBox(coordinates: detail.rawGeometry) {
-            let center = CLLocationCoordinate2D(latitude: (bbox.minLat + bbox.maxLat) / 2, longitude: (bbox.minLon + bbox.maxLon) / 2)
+            let center = CLLocationCoordinate2D(
+                latitude: (bbox.minLat + bbox.maxLat) / 2,
+                longitude: (bbox.minLon + bbox.maxLon) / 2
+            )
             let span = MKCoordinateSpan(
                 latitudeDelta: max((bbox.maxLat - bbox.minLat) * 1.8, 0.01),
                 longitudeDelta: max((bbox.maxLon - bbox.minLon) * 1.8, 0.01)

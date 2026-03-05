@@ -14,6 +14,8 @@ struct EveryStreetCompanionApp: App {
         } catch {
             fatalError("Failed to initialize app container: \(error)")
         }
+
+        AppAppearance.configure()
     }
 
     var body: some Scene {

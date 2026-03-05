@@ -34,6 +34,19 @@ Carthage/Build/
 *.swp
 *.tmp
 
+# Playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+# Archives & code coverage
+*.xcarchive
+*.profraw
+*.profdata
+
 # Environment/local-only files
 .env
 .env.*
+
+# IDEs
+.idea/
+*.iml

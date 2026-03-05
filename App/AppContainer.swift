@@ -8,6 +8,7 @@ final class AppContainer {
     let dashboardRepository: DashboardRepository
     let placesRepository: PlacesRepository
     let settingsRepository: SettingsRepository
+    let coverageRepository: CoverageRepository
     let coordinateCache = LRUCoordinateCache()
 
     init(inMemory: Bool = false) throws {
@@ -16,5 +17,6 @@ final class AppContainer {
         self.dashboardRepository = DashboardRepositoryLive(container: modelContainer)
         self.placesRepository = PlacesRepositoryLive()
         self.settingsRepository = SettingsRepositoryLive()
+        self.coverageRepository = CoverageRepositoryLive()
     }
 }

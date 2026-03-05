@@ -13,39 +13,35 @@ struct PlacesTabView: View {
         ZStack {
             LinearGradient.appBackground.ignoresSafeArea()
 
-            if viewModel.isLoading {
-                ProgressView()
-                    .controlSize(.large)
-                    .tint(AppTheme.accent)
+            if viewModel.isLoading && viewModel.places.isEmpty {
+                loadingView
+            } else if viewModel.places.isEmpty {
+                emptyStateView
             } else {
                 ScrollView {
-                    VStack(spacing: 12) {
+                    VStack(spacing: AppTheme.spacingMD) {
                         placeHeader
 
-                        ForEach(viewModel.places) { place in
-                            Button {
-                                Task { await viewModel.select(place: place) }
-                            } label: {
-                                placeRow(place)
-                            }
-                            .buttonStyle(.plain)
+                        ForEach(Array(viewModel.places.enumerated()), id: \.element.id) { index, place in
+                            placeRow(place, rank: index + 1)
                         }
 
                         if let selected = viewModel.selectedPlace,
                            let snapshot = viewModel.selectedPlaceTrips
                         {
                             placeTripsSection(selected: selected, snapshot: snapshot)
+                                .transition(.asymmetric(
+                                    insertion: .opacity.combined(with: .move(edge: .bottom)),
+                                    removal: .opacity
+                                ))
                         }
 
                         if let error = viewModel.errorMessage {
-                            Text(error)
-                                .font(.footnote)
-                                .foregroundStyle(.red)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .glassCard()
+                            errorBanner(error)
                         }
                     }
-                    .padding(12)
+                    .padding(.horizontal, AppTheme.spacingLG)
+                    .padding(.bottom, AppTheme.spacingXXL)
                 }
             }
         }
@@ -57,83 +53,149 @@ struct PlacesTabView: View {
         }
     }
 
+    // MARK: - Header
+
     private var placeHeader: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Frequent Destinations")
-                .font(.headline)
-            Text("Top places based on visit count and time spent.")
+        VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
+            SectionHeaderView("Frequent Destinations", icon: "mappin.circle.fill")
+
+            Text("Top places ranked by visit count and time spent")
                 .font(.subheadline)
-                .foregroundStyle(AppTheme.textSecondary)
+                .foregroundStyle(AppTheme.textTertiary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassCard()
     }
 
-    private func placeRow(_ place: PlaceSummary) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 5) {
-                Text(place.name)
-                    .font(.headline)
-                    .foregroundStyle(AppTheme.textPrimary)
-                    .lineLimit(2)
+    // MARK: - Place Row
 
-                HStack(spacing: 8) {
-                    chip("Visits", value: "\(place.totalVisits ?? 0)")
-                    chip("Avg Stay", value: place.averageTimeSpent ?? "--")
+    private func placeRow(_ place: PlaceSummary, rank: Int) -> some View {
+        let isSelected = viewModel.selectedPlace?.id == place.id
+
+        return Button {
+            Task {
+                await viewModel.select(place: place)
+            }
+        } label: {
+            HStack(spacing: AppTheme.spacingMD) {
+                // Rank indicator
+                Text("\(rank)")
+                    .font(.caption.weight(.bold).monospacedDigit())
+                    .foregroundStyle(isSelected ? AppTheme.accent : AppTheme.textTertiary)
+                    .frame(width: 28, height: 28)
+                    .background(
+                        (isSelected ? AppTheme.accentMuted : Color.white.opacity(0.05))
+                    , in: RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous))
+
+                VStack(alignment: .leading, spacing: AppTheme.spacingXS) {
+                    Text(place.name)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.textPrimary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+
+                    HStack(spacing: AppTheme.spacingSM) {
+                        MetricChipView(icon: "figure.walk", label: "Visits", value: "\(place.totalVisits ?? 0)")
+                        MetricChipView(icon: "clock", label: "Avg Stay", value: place.averageTimeSpent ?? "--")
+                    }
+                }
+
+                Spacer()
+
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(AppTheme.accent)
+                        .transition(.scale.combined(with: .opacity))
                 }
             }
-
-            Spacer()
-
-            if viewModel.selectedPlace?.id == place.id {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(AppTheme.accent)
-            }
+            .glassCard(padding: AppTheme.spacingMD)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
+                    .stroke(isSelected ? AppTheme.accent.opacity(0.3) : Color.clear, lineWidth: 1)
+            )
         }
-        .glassCard()
+        .buttonStyle(.pressable)
+        .sensoryFeedback(.selection, trigger: isSelected)
     }
+
+    // MARK: - Selected Place Trips
 
     private func placeTripsSection(selected: PlaceSummary, snapshot: PlaceTripsSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Trips for \(selected.name)")
-                .font(.headline)
+        VStack(alignment: .leading, spacing: AppTheme.spacingMD) {
+            SectionHeaderView("Trips to \(selected.name)", icon: "arrow.triangle.turn.up.right.circle")
 
             if snapshot.trips.isEmpty {
-                Text("No trips recorded for this place.")
+                Text("No trips recorded for this place")
                     .font(.subheadline)
-                    .foregroundStyle(AppTheme.textSecondary)
+                    .foregroundStyle(AppTheme.textTertiary)
+                    .padding(.vertical, AppTheme.spacingSM)
             } else {
                 ForEach(snapshot.trips.prefix(12)) { trip in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: AppTheme.spacingMD) {
+                        Circle()
+                            .fill(AppTheme.accent.opacity(0.3))
+                            .frame(width: 6, height: 6)
+
+                        VStack(alignment: .leading, spacing: 2) {
                             Text(trip.endTime ?? .now, style: .date)
                                 .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(AppTheme.textPrimary)
                             Text(trip.timeSpent ?? "--")
                                 .font(.caption)
-                                .foregroundStyle(AppTheme.textSecondary)
+                                .foregroundStyle(AppTheme.textTertiary)
                         }
+
                         Spacer()
+
                         Text(String(format: "%.1f mi", trip.distance ?? 0))
-                            .font(.caption.weight(.semibold))
+                            .font(.caption.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(AppTheme.accent)
                     }
-                    .padding(10)
-                    .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(AppTheme.spacingMD)
+                    .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous))
                 }
             }
         }
         .glassCard()
     }
 
-    private func chip(_ title: String, value: String) -> some View {
-        HStack(spacing: 4) {
-            Text(title)
-                .font(.caption2)
-                .foregroundStyle(AppTheme.textSecondary)
-            Text(value)
-                .font(.caption.weight(.semibold))
+    // MARK: - States
+
+    private var loadingView: some View {
+        VStack(spacing: AppTheme.spacingLG) {
+            ProgressView()
+                .controlSize(.large)
+                .tint(AppTheme.accent)
+            Text("Loading places\u{2026}")
+                .font(.subheadline)
+                .foregroundStyle(AppTheme.textTertiary)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(Color.white.opacity(0.08), in: Capsule())
+    }
+
+    private var emptyStateView: some View {
+        VStack(spacing: AppTheme.spacingLG) {
+            Image(systemName: "mappin.circle")
+                .font(.system(size: 40))
+                .foregroundStyle(AppTheme.textTertiary)
+            Text("No places found")
+                .font(.headline)
+                .foregroundStyle(AppTheme.textSecondary)
+            Text("Drive to some places first")
+                .font(.subheadline)
+                .foregroundStyle(AppTheme.textTertiary)
+        }
+    }
+
+    private func errorBanner(_ message: String) -> some View {
+        HStack(spacing: AppTheme.spacingSM) {
+            Image(systemName: "exclamationmark.circle.fill")
+                .foregroundStyle(AppTheme.error)
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(AppTheme.textSecondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassCard(padding: AppTheme.spacingMD)
     }
 }

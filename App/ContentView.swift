@@ -10,43 +10,51 @@ struct ContentView: View {
                 MapTabView(
                     appModel: appModel,
                     repository: container.tripsRepository,
+                    coverageRepository: container.coverageRepository,
                     coordinateCache: container.coordinateCache
                 )
             }
+            .toolbar(.hidden, for: .navigationBar)
             .tabItem {
-                Label("Map", systemImage: "map")
+                Label("Map", systemImage: "map.fill")
             }
 
             NavigationStack {
                 TripsTabView(appModel: appModel, repository: container.tripsRepository)
             }
             .tabItem {
-                Label("Trips", systemImage: "list.bullet.rectangle")
+                Label("Trips", systemImage: "road.lanes")
             }
 
             NavigationStack {
                 InsightsTabView(appModel: appModel, repository: container.dashboardRepository)
             }
             .tabItem {
-                Label("Insights", systemImage: "chart.line.uptrend.xyaxis")
+                Label("Insights", systemImage: "chart.bar.fill")
             }
 
             NavigationStack {
                 PlacesTabView(appModel: appModel, repository: container.placesRepository)
             }
             .tabItem {
-                Label("Places", systemImage: "mappin.and.ellipse")
+                Label("Places", systemImage: "mappin.circle.fill")
+            }
+
+            NavigationStack {
+                CoverageAreasTabView(repository: container.coverageRepository)
+            }
+            .tabItem {
+                Label("Coverage", systemImage: "square.3.layers.3d.top.filled")
             }
 
             NavigationStack {
                 SettingsView(appModel: appModel, tripsRepository: container.tripsRepository, settingsRepository: container.settingsRepository)
             }
             .tabItem {
-                Label("Settings", systemImage: "gearshape")
+                Label("Settings", systemImage: "gearshape.fill")
             }
         }
         .tint(AppTheme.accent)
-        .background(LinearGradient.appBackground.ignoresSafeArea())
         .preferredColorScheme(.dark)
     }
 }

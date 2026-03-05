@@ -8,30 +8,62 @@ struct SyncStatusBanner: View {
         case .idle:
             EmptyView()
         case .syncing:
-            Label("Syncing trips…", systemImage: "arrow.triangle.2.circlepath")
-                .padding(10)
-                .frame(maxWidth: .infinity)
-                .background(AppTheme.accent.opacity(0.18))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            statusRow(
+                icon: "arrow.triangle.2.circlepath",
+                text: "Syncing trips\u{2026}",
+                color: AppTheme.accent,
+                background: AppTheme.accentMuted
+            )
         case let .stale(lastUpdated):
-            Label(staleMessage(lastUpdated), systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
-                .padding(10)
-                .frame(maxWidth: .infinity)
-                .background(AppTheme.accentWarm.opacity(0.18))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            statusRow(
+                icon: "clock.arrow.trianglehead.counterclockwise.rotate.90",
+                text: staleMessage(lastUpdated),
+                color: AppTheme.accentWarm,
+                background: AppTheme.accentWarmMuted
+            )
         case let .failed(message):
-            Label(message, systemImage: "exclamationmark.triangle")
-                .padding(10)
-                .frame(maxWidth: .infinity)
-                .background(Color.red.opacity(0.18))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            statusRow(
+                icon: "exclamationmark.triangle.fill",
+                text: message,
+                color: AppTheme.error,
+                background: AppTheme.error.opacity(0.12)
+            )
         }
+    }
+
+    private func statusRow(icon: String, text: String, color: Color, background: Color) -> some View {
+        HStack(spacing: AppTheme.spacingSM) {
+            Image(systemName: icon)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(color)
+                .symbolEffect(.pulse, isActive: icon.contains("circlepath"))
+
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(AppTheme.textSecondary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, AppTheme.spacingMD)
+        .padding(.vertical, AppTheme.spacingSM)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                .fill(background)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                        .stroke(color.opacity(0.2), lineWidth: 0.5)
+                )
+        )
+        .transition(.asymmetric(
+            insertion: .opacity.combined(with: .move(edge: .top)),
+            removal: .opacity
+        ))
     }
 
     private func staleMessage(_ date: Date?) -> String {
         guard let date else { return "Showing cached trips" }
         let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .full
-        return "Showing cached trips (updated \(formatter.localizedString(for: date, relativeTo: .now)))"
+        formatter.unitsStyle = .abbreviated
+        return "Cached \u{2022} \(formatter.localizedString(for: date, relativeTo: .now))"
     }
 }

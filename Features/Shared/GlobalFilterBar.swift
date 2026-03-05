@@ -10,87 +10,156 @@ struct GlobalFilterBar: View {
     @State private var draftEnd = Date.now
 
     var body: some View {
-        VStack(alignment: .leading, spacing: compact ? 8 : 10) {
+        VStack(alignment: .leading, spacing: compact ? AppTheme.spacingSM : AppTheme.spacingMD) {
+            // Preset buttons
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
+                HStack(spacing: AppTheme.spacingSM) {
                     ForEach(DateRangePreset.allCases) { preset in
-                        Button {
-                            if preset == .custom {
-                                draftStart = appModel.customDateRange.start
-                                draftEnd = appModel.customDateRange.end
-                                showCustomRangeSheet = true
-                            } else {
-                                appModel.setPreset(preset)
-                                onFilterChange()
-                            }
-                        } label: {
-                            Text(preset.rawValue)
-                                .font(compact ? .footnote.weight(.semibold) : .subheadline.weight(.semibold))
-                                .padding(.horizontal, compact ? 10 : 12)
-                                .padding(.vertical, compact ? 6 : 8)
-                                .background(
-                                    Capsule()
-                                        .fill(appModel.selectedPreset == preset ? AppTheme.accent.opacity(0.28) : Color.white.opacity(0.10))
-                                )
-                                .overlay(
-                                    Capsule()
-                                        .stroke(appModel.selectedPreset == preset ? AppTheme.accent : Color.white.opacity(0.16), lineWidth: 1)
-                                )
-                        }
-                        .buttonStyle(.plain)
+                        presetButton(preset)
                     }
                 }
+                .padding(.horizontal, 2)
             }
 
-            HStack(spacing: 10) {
+            // Vehicle selector + date range
+            HStack(spacing: AppTheme.spacingSM) {
                 Menu {
-                    Button("All Vehicles") {
+                    Button {
                         appModel.setSelectedVehicle(nil)
                         onFilterChange()
+                    } label: {
+                        Label("All Vehicles", systemImage: appModel.selectedIMEI == nil ? "checkmark" : "")
                     }
 
+                    Divider()
+
                     ForEach(appModel.vehicles) { vehicle in
-                        Button(vehicle.displayName) {
+                        Button {
                             appModel.setSelectedVehicle(vehicle.imei)
                             onFilterChange()
+                        } label: {
+                            Label(vehicle.displayName, systemImage: appModel.selectedIMEI == vehicle.imei ? "checkmark" : "")
                         }
                     }
                 } label: {
-                    Label(vehicleLabel, systemImage: "car")
-                        .font(compact ? .subheadline.weight(.medium) : .subheadline.weight(.medium))
+                    HStack(spacing: AppTheme.spacingXS) {
+                        Image(systemName: "car.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(AppTheme.accent)
+                        Text(vehicleLabel)
+                            .font(compact ? .caption.weight(.medium) : .subheadline.weight(.medium))
+                            .foregroundStyle(AppTheme.textPrimary)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(AppTheme.textTertiary)
+                    }
+                    .padding(.horizontal, AppTheme.spacingMD)
+                    .padding(.vertical, compact ? AppTheme.spacingXS + 2 : AppTheme.spacingSM)
+                    .background(Color.white.opacity(0.06), in: Capsule())
                 }
 
                 Spacer()
 
                 Text(appModel.activeDateRange.shortLabel)
-                    .font(compact ? .caption2 : .caption)
-                    .foregroundStyle(AppTheme.textSecondary)
+                    .font(.caption2.weight(.medium).monospacedDigit())
+                    .foregroundStyle(AppTheme.textTertiary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
         }
-        .glassCard(padding: compact ? 10 : 14, cornerRadius: compact ? 16 : 18)
+        .glassCard(padding: compact ? AppTheme.spacingMD : AppTheme.spacingLG, cornerRadius: compact ? AppTheme.radiusMD : AppTheme.radiusLG)
         .sheet(isPresented: $showCustomRangeSheet) {
-            NavigationStack {
-                Form {
-                    DatePicker("Start", selection: $draftStart, displayedComponents: [.date])
-                    DatePicker("End", selection: $draftEnd, displayedComponents: [.date])
+            customRangeSheet
+        }
+    }
+
+    private func presetButton(_ preset: DateRangePreset) -> some View {
+        let isActive = appModel.selectedPreset == preset
+
+        return Button {
+            if preset == .custom {
+                draftStart = appModel.customDateRange.start
+                draftEnd = appModel.customDateRange.end
+                showCustomRangeSheet = true
+            } else {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    appModel.setPreset(preset)
                 }
-                .navigationTitle("Custom Range")
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") { showCustomRangeSheet = false }
+                onFilterChange()
+            }
+        } label: {
+            Text(preset.rawValue)
+                .font(compact ? .caption.weight(.semibold) : .subheadline.weight(.semibold))
+                .foregroundStyle(isActive ? .white : AppTheme.textSecondary)
+                .padding(.horizontal, compact ? AppTheme.spacingMD : AppTheme.spacingLG)
+                .padding(.vertical, compact ? AppTheme.spacingXS + 2 : AppTheme.spacingSM)
+                .background(
+                    Capsule()
+                        .fill(isActive ? AppTheme.accent.opacity(0.22) : Color.white.opacity(0.05))
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(isActive ? AppTheme.accent.opacity(0.5) : Color.clear, lineWidth: 0.5)
+                )
+        }
+        .buttonStyle(.pressable)
+        .sensoryFeedback(.selection, trigger: isActive)
+    }
+
+    private var customRangeSheet: some View {
+        NavigationStack {
+            ZStack {
+                LinearGradient.appBackground.ignoresSafeArea()
+
+                VStack(spacing: AppTheme.spacingXL) {
+                    VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
+                        Text("START DATE")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(AppTheme.textTertiary)
+                            .tracking(0.8)
+                        DatePicker("", selection: $draftStart, displayedComponents: [.date])
+                            .datePickerStyle(.compact)
+                            .labelsHidden()
                     }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Apply") {
-                            appModel.setCustomRange(start: draftStart, end: draftEnd)
-                            onFilterChange()
-                            showCustomRangeSheet = false
-                        }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .glassCard()
+
+                    VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
+                        Text("END DATE")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(AppTheme.textTertiary)
+                            .tracking(0.8)
+                        DatePicker("", selection: $draftEnd, displayedComponents: [.date])
+                            .datePickerStyle(.compact)
+                            .labelsHidden()
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .glassCard()
+
+                    Spacer()
+                }
+                .padding(AppTheme.spacingLG)
+            }
+            .navigationTitle("Custom Range")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { showCustomRangeSheet = false }
+                        .foregroundStyle(AppTheme.textSecondary)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Apply") {
+                        appModel.setCustomRange(start: draftStart, end: draftEnd)
+                        onFilterChange()
+                        showCustomRangeSheet = false
+                    }
+                    .fontWeight(.semibold)
                 }
             }
         }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(AppTheme.background)
     }
 
     private var vehicleLabel: String {

@@ -32,6 +32,13 @@ protocol SettingsRepository {
     func loadHealth() async throws -> ServiceHealthSnapshot
 }
 
+@MainActor
+protocol CoverageRepository {
+    func loadCoverageAreas() async throws -> [CoverageArea]
+    func loadCoverageAreaDetail(id: String) async throws -> CoverageAreaDetail
+    func loadStreets(areaID: String, boundingBox: TripBoundingBox) async throws -> CoverageStreetsSnapshot
+}
+
 struct TripCacheStats: Equatable {
     let tripCount: Int
     let windowCount: Int
