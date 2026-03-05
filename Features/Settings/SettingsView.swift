@@ -13,7 +13,6 @@ struct SettingsView: View {
 
             ScrollView {
                 VStack(spacing: AppTheme.spacingLG) {
-                    apiSection
                     cacheSection
                     healthSection
 
@@ -31,44 +30,6 @@ struct SettingsView: View {
                 await viewModel.load()
             }
         }
-    }
-
-    // MARK: - API Section
-
-    private var apiSection: some View {
-        VStack(alignment: .leading, spacing: AppTheme.spacingMD) {
-            SectionHeaderView("API Endpoint", icon: "link")
-
-            VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
-                Text("BASE URL")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(AppTheme.textTertiary)
-                    .tracking(0.8)
-
-                TextField("https://www.everystreet.me", text: $viewModel.apiBaseURLText)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .font(.subheadline.monospaced())
-                    .foregroundStyle(AppTheme.textPrimary)
-                    .padding(AppTheme.spacingMD)
-                    .background(
-                        RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous)
-                            .fill(Color.white.opacity(0.05))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous)
-                                    .stroke(AppTheme.border, lineWidth: 0.5)
-                            )
-                    )
-            }
-
-            Button("Save URL") {
-                viewModel.saveBaseURL()
-            }
-            .buttonStyle(.accent)
-            .sensoryFeedback(.success, trigger: viewModel.statusMessage)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .glassCard()
     }
 
     // MARK: - Cache Section

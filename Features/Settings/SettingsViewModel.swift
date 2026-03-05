@@ -7,7 +7,6 @@ final class SettingsViewModel {
     private let tripsRepository: TripsRepository
     private let settingsRepository: SettingsRepository
 
-    var apiBaseURLText: String
     var cacheStats: TripCacheStats?
     var health: ServiceHealthSnapshot?
     var isLoading = false
@@ -16,7 +15,6 @@ final class SettingsViewModel {
     init(tripsRepository: TripsRepository, settingsRepository: SettingsRepository) {
         self.tripsRepository = tripsRepository
         self.settingsRepository = settingsRepository
-        self.apiBaseURLText = AppSettingsStore.shared.apiBaseURL.absoluteString
     }
 
     func load() async {
@@ -26,16 +24,6 @@ final class SettingsViewModel {
         health = await loadHealthIfPossible()
 
         isLoading = false
-    }
-
-    func saveBaseURL() {
-        guard let url = URL(string: apiBaseURLText) else {
-            statusMessage = "Invalid URL"
-            return
-        }
-
-        AppSettingsStore.shared.apiBaseURL = url
-        statusMessage = "API URL updated"
     }
 
     func clearCache() async {

@@ -213,26 +213,28 @@ private func coverageStyle(status: CoverageStreetStatus) -> OverlayLineStyle {
     case .driven:
         OverlayLineStyle(
             color: UIColor(red: 0.26, green: 0.79, blue: 0.52, alpha: 1),
-            lineWidth: 3.0,
-            alpha: 0.9
+            lineWidth: 4.2,
+            alpha: 0.96
         )
     case .undriven:
         OverlayLineStyle(
             color: UIColor(red: 0.96, green: 0.64, blue: 0.20, alpha: 1),
-            lineWidth: 2.4,
-            alpha: 0.9
+            lineWidth: 3.1,
+            alpha: 0.94
         )
     case .undriveable:
         OverlayLineStyle(
-            color: UIColor(white: 0.64, alpha: 1),
-            lineWidth: 1.8,
-            alpha: 0.55
+            color: UIColor(white: 0.72, alpha: 1),
+            lineWidth: 1.7,
+            alpha: 0.58,
+            dashPattern: [6, 4]
         )
     case .unknown:
         OverlayLineStyle(
             color: UIColor(red: 0.30, green: 0.85, blue: 1.0, alpha: 1),
             lineWidth: 2.0,
-            alpha: 0.65
+            alpha: 0.60,
+            dashPattern: [2, 6]
         )
     }
 }

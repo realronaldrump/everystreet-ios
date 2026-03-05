@@ -389,7 +389,14 @@ private struct CoverageAreaMapPanel: View {
                     ProgressView()
                         .tint(AppTheme.accent)
                         .padding(AppTheme.spacingSM)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous))
+                        .background(
+                            RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous)
+                                .fill(AppTheme.surfacePanel)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous)
+                                .stroke(AppTheme.panelBorder, lineWidth: 0.8)
+                        )
                 }
             }
 

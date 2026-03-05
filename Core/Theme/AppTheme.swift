@@ -9,17 +9,21 @@ enum AppTheme {
 
     // MARK: - Color Palette
 
-    // Backgrounds — rich dark with subtle cool undertone
+    // Backgrounds
     static let background = Color(red: 0.05, green: 0.05, blue: 0.08)
     static let elevatedBackground = Color(red: 0.08, green: 0.08, blue: 0.12)
 
-    // Surfaces — lifted from background
+    // Solid dashboard surfaces
     static let surface = Color(red: 0.10, green: 0.11, blue: 0.16)
-    static let surfaceraised = Color(red: 0.14, green: 0.15, blue: 0.21)
+    static let surfaceRaised = Color(red: 0.14, green: 0.15, blue: 0.21)
+    static let surfacePanel = Color(red: 0.12, green: 0.13, blue: 0.19)
+    static let surfacePanelRaised = Color(red: 0.16, green: 0.17, blue: 0.24)
+    static let surfaceraised = surfaceRaised // legacy compatibility
 
-    // Card fills for glass morphism
-    static let card = Color(red: 0.10, green: 0.11, blue: 0.17)
-    static let cardHighlight = Color(red: 0.14, green: 0.16, blue: 0.23)
+    // Panel accents and outlines
+    static let panelInset = Color.black.opacity(0.24)
+    static let panelBorder = Color.white.opacity(0.11)
+    static let panelBorderStrong = Color.white.opacity(0.22)
 
     // Primary accent — vivid cyan-blue
     static let accent = Color(red: 0.20, green: 0.67, blue: 0.98)
@@ -123,15 +127,19 @@ extension LinearGradient {
         )
     }
 
-    static var glassCard: LinearGradient {
+    static var panelCard: LinearGradient {
         LinearGradient(
             colors: [
-                AppTheme.card.opacity(0.75),
-                AppTheme.cardHighlight.opacity(0.50),
+                AppTheme.surfacePanelRaised,
+                AppTheme.surfacePanel,
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
+    }
+
+    static var glassCard: LinearGradient {
+        panelCard
     }
 
     static var accentGradient: LinearGradient {
@@ -146,8 +154,8 @@ extension LinearGradient {
         let color = AppTheme.coverageColor(for: percentage)
         return LinearGradient(
             colors: [
-                AppTheme.card.opacity(0.75),
-                color.opacity(0.08),
+                AppTheme.surfacePanelRaised,
+                color.opacity(0.14),
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
@@ -155,7 +163,7 @@ extension LinearGradient {
     }
 }
 
-// MARK: - Glass Card Modifier
+// MARK: - Panel Card Modifier
 
 struct GlassCardModifier: ViewModifier {
     let padding: CGFloat
@@ -167,22 +175,18 @@ struct GlassCardModifier: ViewModifier {
             .padding(padding)
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .opacity(0.45)
-            )
-            .background(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(
                         tintColor.map { color in
                             LinearGradient(
                                 colors: [
-                                    AppTheme.card.opacity(0.75),
-                                    color.opacity(0.08),
+                                    AppTheme.surfacePanelRaised,
+                                    AppTheme.surfacePanel,
+                                    color.opacity(0.14),
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
-                        } ?? LinearGradient.glassCard
+                        } ?? LinearGradient.panelCard
                     )
             )
             .overlay(
@@ -190,16 +194,22 @@ struct GlassCardModifier: ViewModifier {
                     .stroke(
                         LinearGradient(
                             colors: [
-                                (tintColor ?? Color.white).opacity(0.18),
-                                Color.white.opacity(0.04),
+                                (tintColor ?? AppTheme.panelBorderStrong).opacity(0.55),
+                                AppTheme.panelBorder,
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
-                        lineWidth: 0.5
+                        lineWidth: 0.8
                     )
             )
-            .shadow(color: Color.black.opacity(0.22), radius: 16, x: 0, y: 8)
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .inset(by: 1)
+                    .stroke(Color.black.opacity(0.22), lineWidth: 0.6)
+            )
+            .shadow(color: Color.black.opacity(0.34), radius: 18, x: 0, y: 10)
+            .shadow(color: Color.black.opacity(0.14), radius: 4, x: 0, y: 1)
     }
 }
 
@@ -213,7 +223,7 @@ extension View {
     }
 }
 
-// MARK: - Inner Card (for nested elements within glass cards)
+// MARK: - Inner Card (for nested elements within panel cards)
 
 struct InnerCardModifier: ViewModifier {
     let cornerRadius: CGFloat
@@ -223,11 +233,11 @@ struct InnerCardModifier: ViewModifier {
             .padding(AppTheme.spacingMD)
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(Color.white.opacity(0.05))
+                    .fill(AppTheme.panelInset)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(Color.white.opacity(0.06), lineWidth: 0.5)
+                    .stroke(AppTheme.panelBorder, lineWidth: 0.6)
             )
     }
 }
@@ -381,7 +391,14 @@ struct MetricChipView: View {
         }
         .padding(.horizontal, AppTheme.spacingSM)
         .padding(.vertical, AppTheme.spacingXS)
-        .background(Color.white.opacity(0.06), in: Capsule())
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(AppTheme.panelInset)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(AppTheme.panelBorder, lineWidth: 0.6)
+        )
     }
 }
 
@@ -390,12 +407,11 @@ struct MetricChipView: View {
 enum AppAppearance {
     @MainActor static func configure() {
         #if canImport(UIKit)
-        // Tab bar — translucent dark
+        // Tab bar — solid dashboard surface
         let tabAppearance = UITabBarAppearance()
-        tabAppearance.configureWithDefaultBackground()
-        tabAppearance.backgroundColor = UIColor(AppTheme.background.opacity(0.85))
-        tabAppearance.shadowColor = .clear
-        tabAppearance.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterialDark)
+        tabAppearance.configureWithOpaqueBackground()
+        tabAppearance.backgroundColor = UIColor(AppTheme.surface)
+        tabAppearance.shadowColor = UIColor.white.withAlphaComponent(0.06)
 
         let normalAttrs: [NSAttributedString.Key: Any] = [
             .foregroundColor: UIColor.white.withAlphaComponent(0.30),
@@ -414,12 +430,11 @@ enum AppAppearance {
         UITabBar.appearance().standardAppearance = tabAppearance
         UITabBar.appearance().scrollEdgeAppearance = tabAppearance
 
-        // Navigation bar — translucent with blur
+        // Navigation bar — solid with subtle border
         let navAppearance = UINavigationBarAppearance()
-        navAppearance.configureWithDefaultBackground()
-        navAppearance.backgroundColor = UIColor(AppTheme.background.opacity(0.78))
-        navAppearance.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterialDark)
-        navAppearance.shadowColor = .clear
+        navAppearance.configureWithOpaqueBackground()
+        navAppearance.backgroundColor = UIColor(AppTheme.surface)
+        navAppearance.shadowColor = UIColor.white.withAlphaComponent(0.06)
         navAppearance.titleTextAttributes = [
             .foregroundColor: UIColor.white,
             .font: UIFont.systemFont(ofSize: 17, weight: .semibold),

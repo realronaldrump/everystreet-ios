@@ -159,7 +159,7 @@ struct GlobalFilterBar: View {
         }
         .presentationDetents([.medium])
         .presentationDragIndicator(.visible)
-        .presentationBackground(AppTheme.background)
+        .presentationBackground(AppTheme.surface)
     }
 
     private var vehicleLabel: String {

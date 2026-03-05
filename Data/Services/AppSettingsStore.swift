@@ -5,25 +5,17 @@ final class AppSettingsStore {
     static let shared = AppSettingsStore()
 
     private enum Keys {
-        static let apiBaseURL = "api_base_url"
         static let selectedPreset = "selected_date_preset"
         static let customStart = "custom_start_date"
         static let customEnd = "custom_end_date"
         static let selectedIMEI = "selected_imei"
     }
 
+    private static let fixedAPIBaseURL = URL(string: "https://www.everystreet.me")!
     private let defaults = UserDefaults.standard
 
     var apiBaseURL: URL {
-        get {
-            if let raw = defaults.string(forKey: Keys.apiBaseURL), let url = URL(string: raw) {
-                return url
-            }
-            return URL(string: "https://www.everystreet.me")!
-        }
-        set {
-            defaults.set(newValue.absoluteString, forKey: Keys.apiBaseURL)
-        }
+        Self.fixedAPIBaseURL
     }
 
     var selectedPreset: DateRangePreset {
