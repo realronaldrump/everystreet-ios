@@ -60,6 +60,9 @@ final class MapTabViewModel {
     private let coverageRepository: CoverageRepository
     private let coordinateCache: LRUCoordinateCache
 
+    private weak var syncAppModel: AppModel?
+    private var lastBaseTripQuery: TripQuery?
+
     private var areaBoundingBoxes: [String: TripBoundingBox] = [:]
     private var tripOverlayGroupsByLevel: [GeometryDetailLevel: [OverlayRenderGroup]] = [:]
     private var coverageOverlayGroupsByLevel: [GeometryDetailLevel: [OverlayRenderGroup]] = [:]
@@ -96,6 +99,10 @@ final class MapTabViewModel {
     var selectedCoverageArea: CoverageArea? {
         guard let selectedCoverageAreaID else { return nil }
         return coverageAreas.first(where: { $0.id == selectedCoverageAreaID })
+    }
+
+    var isTripCoverageClipActive: Bool {
+        activeTripCoverageAreaID != nil
     }
 
     var visibleCoverageSegments: [CoverageMapFeature] {
@@ -178,29 +185,14 @@ final class MapTabViewModel {
     }
 
     func load(query: TripQuery, appModel: AppModel) async {
-        isLoading = true
-        errorMessage = nil
-        appModel.markSyncStarted()
+        syncAppModel = appModel
+        lastBaseTripQuery = query
 
-        do {
-            let bundle = try await repository.loadTripMapBundle(query: query)
-            allTrips = bundle.trips.sorted { $0.startTime > $1.startTime }
-            updateVisibleTrips()
-            await rebuildTripOverlays(query: query)
-
-            let lastSync = await repository.lastSyncDate(for: query)
-            appModel.lastUpdated = lastSync
-            appModel.markSyncFinished(at: lastSync ?? .now)
-        } catch {
-            if !allTrips.isEmpty {
-                appModel.markSyncStale()
-            } else {
-                appModel.markSyncFailure(error.localizedDescription)
-            }
-            errorMessage = error.localizedDescription
-        }
-
-        isLoading = false
+        await loadTripsBundle(
+            using: query,
+            syncModel: appModel,
+            updateSyncState: true
+        )
         await loadCoverageAreasIfNeeded()
 
         switch selectedLayer {
@@ -218,44 +210,38 @@ final class MapTabViewModel {
     }
 
     func refreshCurrentLayer(query: TripQuery, appModel: AppModel) async {
+        syncAppModel = appModel
+        lastBaseTripQuery = query
+
         switch selectedLayer {
         case .trips:
-            appModel.markSyncStarted()
-            do {
-                let bundle = try await repository.loadTripMapBundle(query: query)
-                allTrips = bundle.trips.sorted { $0.startTime > $1.startTime }
-                updateVisibleTrips()
-                await rebuildTripOverlays(query: query)
-                appModel.markSyncFinished()
-            } catch {
-                appModel.markSyncFailure(error.localizedDescription)
-                errorMessage = error.localizedDescription
-            }
+            await loadTripsBundle(
+                using: query,
+                syncModel: appModel,
+                updateSyncState: true
+            )
         case .coverage:
             await refreshCoverageLayer()
         case .combined:
-            appModel.markSyncStarted()
-            do {
-                let bundle = try await repository.loadTripMapBundle(query: query)
-                allTrips = bundle.trips.sorted { $0.startTime > $1.startTime }
-                updateVisibleTrips()
-                await rebuildTripOverlays(query: query)
-                appModel.markSyncFinished()
-            } catch {
-                appModel.markSyncFailure(error.localizedDescription)
-                errorMessage = error.localizedDescription
-            }
+            await loadTripsBundle(
+                using: query,
+                syncModel: appModel,
+                updateSyncState: true
+            )
             await refreshCoverageLayer()
         }
     }
 
     func setLayer(_ layer: MapLayerMode) async {
         guard selectedLayer != layer else { return }
+        let wasTripClipActive = isTripCoverageClipActive
         selectedLayer = layer
 
         switch layer {
         case .trips:
-            break
+            if wasTripClipActive != isTripCoverageClipActive {
+                await reloadTripsForCurrentContext()
+            }
         case .coverage:
             await loadCoverageAreasIfNeeded()
             if let areaID = selectedCoverageAreaID {
@@ -267,6 +253,9 @@ final class MapTabViewModel {
             if let areaID = selectedCoverageAreaID {
                 await loadCoverageAreaDetailIfNeeded(areaID: areaID, focusCamera: false)
                 await loadCoverageBundle(areaID: areaID)
+            }
+            if wasTripClipActive != isTripCoverageClipActive {
+                await reloadTripsForCurrentContext()
             }
         }
     }
@@ -280,6 +269,10 @@ final class MapTabViewModel {
 
         await loadCoverageAreaDetailIfNeeded(areaID: areaID, focusCamera: true)
         await loadCoverageBundle(areaID: areaID)
+
+        if selectedLayer == .combined {
+            await reloadTripsForCurrentContext()
+        }
     }
 
     func setCoverageFilter(_ filter: CoverageStreetFilter) {
@@ -295,14 +288,77 @@ final class MapTabViewModel {
         updateCoverageViewportCount()
     }
 
+    private var activeTripCoverageAreaID: String? {
+        guard selectedLayer == .combined else { return nil }
+        guard let selectedCoverageAreaID else { return nil }
+        let trimmed = selectedCoverageAreaID.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func effectiveTripQuery(from baseQuery: TripQuery) -> TripQuery {
+        baseQuery.withCoverageArea(id: activeTripCoverageAreaID)
+    }
+
+    private func loadTripsBundle(
+        using baseQuery: TripQuery,
+        syncModel: AppModel?,
+        updateSyncState: Bool
+    ) async {
+        isLoading = true
+        errorMessage = nil
+
+        if updateSyncState {
+            syncModel?.markSyncStarted()
+        }
+
+        let query = effectiveTripQuery(from: baseQuery)
+
+        do {
+            let bundle = try await repository.loadTripMapBundle(query: query)
+            allTrips = bundle.trips.sorted { $0.startTime > $1.startTime }
+            updateVisibleTrips()
+            await rebuildTripOverlays(query: query)
+
+            if updateSyncState {
+                let lastSync = await repository.lastSyncDate(for: baseQuery)
+                syncModel?.lastUpdated = lastSync
+                syncModel?.markSyncFinished(at: lastSync ?? .now)
+            }
+        } catch {
+            if updateSyncState {
+                if !allTrips.isEmpty {
+                    syncModel?.markSyncStale()
+                } else {
+                    syncModel?.markSyncFailure(error.localizedDescription)
+                }
+            }
+            errorMessage = error.localizedDescription
+        }
+
+        isLoading = false
+    }
+
+    private func reloadTripsForCurrentContext() async {
+        guard let query = lastBaseTripQuery else { return }
+        await loadTripsBundle(
+            using: query,
+            syncModel: syncAppModel,
+            updateSyncState: false
+        )
+    }
+
     private func loadCoverageAreasIfNeeded() async {
         await loadCoverageAreas(force: false)
     }
 
     private func refreshCoverageLayer() async {
+        let previousClipAreaID = activeTripCoverageAreaID
         await loadCoverageAreas(force: true)
         if let areaID = selectedCoverageAreaID {
             await loadCoverageBundle(areaID: areaID)
+        }
+        if selectedLayer == .combined, previousClipAreaID != activeTripCoverageAreaID {
+            await reloadTripsForCurrentContext()
         }
     }
 

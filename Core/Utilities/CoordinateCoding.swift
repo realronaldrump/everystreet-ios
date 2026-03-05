@@ -33,6 +33,29 @@ enum CoordinateCoding {
 enum Polyline6 {
     private static let scale: Double = 1_000_000
 
+    static func encode(_ coordinates: [CLLocationCoordinate2D]) -> String {
+        guard !coordinates.isEmpty else { return "" }
+
+        var encoded = ""
+        encoded.reserveCapacity(max(coordinates.count * 4, 16))
+
+        var previousLatitude = 0
+        var previousLongitude = 0
+
+        for coordinate in coordinates {
+            let latitude = quantize(coordinate.latitude)
+            let longitude = quantize(coordinate.longitude)
+
+            encoded += encodeDelta(latitude - previousLatitude)
+            encoded += encodeDelta(longitude - previousLongitude)
+
+            previousLatitude = latitude
+            previousLongitude = longitude
+        }
+
+        return encoded
+    }
+
     static func decode(_ encoded: String) -> [CLLocationCoordinate2D] {
         guard !encoded.isEmpty else { return [] }
 
@@ -87,5 +110,24 @@ enum Polyline6 {
         }
 
         return nil
+    }
+
+    private static func quantize(_ value: Double) -> Int {
+        Int((value * scale).rounded())
+    }
+
+    private static func encodeDelta(_ value: Int) -> String {
+        var transformed = value < 0 ? ~(value << 1) : (value << 1)
+        var chunks = ""
+
+        while transformed >= 0x20 {
+            let scalar = UnicodeScalar((0x20 | (transformed & 0x1F)) + 63)!
+            chunks.unicodeScalars.append(scalar)
+            transformed >>= 5
+        }
+
+        let finalScalar = UnicodeScalar(transformed + 63)!
+        chunks.unicodeScalars.append(finalScalar)
+        return chunks
     }
 }

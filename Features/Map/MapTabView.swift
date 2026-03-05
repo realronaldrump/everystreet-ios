@@ -753,7 +753,8 @@ struct MapTabView: View {
         case .coverage:
             return "\(viewModel.coverageTotalInViewport) segments in viewport"
         case .combined:
-            return "\(viewModel.visibleTrips.count) trips • \(viewModel.coverageTotalInViewport) segments • street layer: \(viewModel.coverageFilter.title)"
+            let clipSuffix = viewModel.isTripCoverageClipActive ? " • trips clipped to area" : ""
+            return "\(viewModel.visibleTrips.count) trips • \(viewModel.coverageTotalInViewport) segments • street layer: \(viewModel.coverageFilter.title)\(clipSuffix)"
         }
     }
 
@@ -889,6 +890,12 @@ struct MapTabView: View {
                     RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
                         .stroke(AppTheme.panelBorder, lineWidth: 0.8)
                 )
+            }
+
+            if viewModel.selectedLayer == .combined {
+                Text("Trip lines are clipped to this boundary in combined mode.")
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.textTertiary)
             }
 
             Text("STREET STATUS")
@@ -1039,7 +1046,7 @@ struct MapTabView: View {
             return viewModel.coverageFilter != .all
         case .combined:
             let tripFilters = appModel.selectedPreset != .sevenDays
-            return tripFilters || viewModel.coverageFilter != .all
+            return tripFilters || viewModel.coverageFilter != .all || viewModel.isTripCoverageClipActive
         }
     }
 

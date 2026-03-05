@@ -166,6 +166,25 @@ enum TripAPIParser {
         )
     }
 
+    static func buildTripMapBundle(
+        from trips: [TripSummary],
+        query: TripQuery,
+        generatedAt: Date = .now
+    ) -> TripMapBundle {
+        let features = trips
+            .sorted { $0.startTime > $1.startTime }
+            .compactMap(mapTripToMapFeature)
+        let bbox = mergeBoundingBoxes(features.map(\.bbox))
+
+        return TripMapBundle(
+            revision: syntheticRevision(query: query, features: features, generatedAt: generatedAt),
+            generatedAt: generatedAt,
+            bbox: bbox,
+            tripCount: features.count,
+            trips: features
+        )
+    }
+
     private static func parsePoint(from any: Any?) -> CLLocationCoordinate2D? {
         guard let object = any as? [String: Any] else { return nil }
         guard let coordinates = object["coordinates"] as? [Any] else { return nil }
@@ -226,5 +245,82 @@ enum TripAPIParser {
             bbox: bbox,
             geom: geometry
         )
+    }
+
+    private static func mapTripToMapFeature(_ trip: TripSummary) -> TripMapFeature? {
+        let full = trip.fullGeometry
+        guard full.count > 1 else { return nil }
+
+        let medium = trip.mediumGeometry.isEmpty ? GeometrySimplifier.simplify(full, tolerance: 0.00045) : trip.mediumGeometry
+        let low = trip.lowGeometry.isEmpty ? GeometrySimplifier.simplify(full, tolerance: 0.0018) : trip.lowGeometry
+
+        guard let bbox = mapBoundingBox(for: trip, fallbackCoordinates: full) else {
+            return nil
+        }
+
+        return TripMapFeature(
+            id: trip.transactionId,
+            startTime: trip.startTime,
+            endTime: trip.endTime,
+            imei: trip.imei,
+            distanceMiles: trip.distance,
+            startLocation: trip.startLocation,
+            destination: trip.destination,
+            bbox: bbox,
+            geom: EncodedGeometryLOD(
+                full: Polyline6.encode(full),
+                medium: Polyline6.encode(medium),
+                low: Polyline6.encode(low)
+            )
+        )
+    }
+
+    private static func mapBoundingBox(
+        for trip: TripSummary,
+        fallbackCoordinates: [CLLocationCoordinate2D]
+    ) -> MapBoundingBox? {
+        if let bbox = trip.boundingBox {
+            return MapBoundingBox(
+                minLon: bbox.minLon,
+                minLat: bbox.minLat,
+                maxLon: bbox.maxLon,
+                maxLat: bbox.maxLat
+            )
+        }
+
+        guard let inferred = TripBoundingBox(coordinates: fallbackCoordinates) else {
+            return nil
+        }
+
+        return MapBoundingBox(
+            minLon: inferred.minLon,
+            minLat: inferred.minLat,
+            maxLon: inferred.maxLon,
+            maxLat: inferred.maxLat
+        )
+    }
+
+    private static func mergeBoundingBoxes(_ boxes: [MapBoundingBox]) -> MapBoundingBox {
+        guard let first = boxes.first else {
+            return MapBoundingBox(minLon: 0, minLat: 0, maxLon: 0, maxLat: 0)
+        }
+
+        return boxes.dropFirst().reduce(first) { current, next in
+            MapBoundingBox(
+                minLon: min(current.minLon, next.minLon),
+                minLat: min(current.minLat, next.minLat),
+                maxLon: max(current.maxLon, next.maxLon),
+                maxLat: max(current.maxLat, next.maxLat)
+            )
+        }
+    }
+
+    private static func syntheticRevision(
+        query: TripQuery,
+        features: [TripMapFeature],
+        generatedAt: Date
+    ) -> String {
+        let latestStart = features.first?.startTime.timeIntervalSince1970 ?? 0
+        return "geojson|\(query.cacheKey)|\(features.count)|\(Int(latestStart))|\(Int(generatedAt.timeIntervalSince1970))"
     }
 }

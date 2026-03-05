@@ -1,3 +1,4 @@
+import CoreLocation
 import XCTest
 @testable import EveryStreetCompanion
 
@@ -90,5 +91,53 @@ final class TripAPIParserTests: XCTestCase {
         XCTAssertEqual(bundle.trips.count, 1)
         XCTAssertEqual(bundle.trips.first?.id, "trip-abc")
         XCTAssertEqual(bundle.trips.first?.geom.full, "gvrd{@vsjhxD_q@wj@")
+    }
+
+    func testBuildTripMapBundleFromSummaries() {
+        let start = Date(timeIntervalSince1970: 1_709_300_000)
+        let end = start.addingTimeInterval(1_800)
+        let coordinates = [
+            CLLocationCoordinate2D(latitude: 31.50, longitude: -97.10),
+            CLLocationCoordinate2D(latitude: 31.55, longitude: -97.05),
+            CLLocationCoordinate2D(latitude: 31.60, longitude: -97.00)
+        ]
+
+        let trip = TripSummary(
+            transactionId: "trip-clip-1",
+            imei: "imei-1",
+            vin: nil,
+            vehicleLabel: nil,
+            startTime: start,
+            endTime: end,
+            distance: 8.4,
+            duration: 1_800,
+            maxSpeed: nil,
+            totalIdleDuration: nil,
+            fuelConsumed: nil,
+            estimatedCost: nil,
+            startLocation: "Home",
+            destination: "Store",
+            status: "completed",
+            previewPath: nil,
+            boundingBox: nil,
+            fullGeometry: coordinates,
+            mediumGeometry: coordinates,
+            lowGeometry: [coordinates.first!, coordinates.last!]
+        )
+
+        let query = TripQuery(
+            dateRange: DateInterval(start: start, end: end),
+            imei: nil,
+            source: .rawTripsOnly,
+            coverageAreaID: "area-1"
+        )
+
+        let bundle = TripAPIParser.buildTripMapBundle(from: [trip], query: query, generatedAt: start)
+        XCTAssertEqual(bundle.tripCount, 1)
+        XCTAssertEqual(bundle.trips.count, 1)
+        XCTAssertEqual(bundle.trips.first?.id, "trip-clip-1")
+        XCTAssertEqual(Polyline6.decode(bundle.trips.first?.geom.full ?? "").count, 3)
+        XCTAssertEqual(bundle.bbox.minLon, -97.10, accuracy: 0.0001)
+        XCTAssertEqual(bundle.bbox.maxLat, 31.60, accuracy: 0.0001)
     }
 }

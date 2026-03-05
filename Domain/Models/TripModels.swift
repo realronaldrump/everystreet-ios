@@ -9,11 +9,30 @@ struct TripQuery: Hashable {
     var dateRange: DateInterval
     var imei: String?
     var source: TripGeometrySource = .rawTripsOnly
+    var coverageAreaID: String? = nil
+
+    var isCoverageClipped: Bool {
+        guard let coverageAreaID else { return false }
+        return !coverageAreaID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    func withCoverageArea(id: String?) -> TripQuery {
+        let trimmed = id?.trimmingCharacters(in: .whitespacesAndNewlines)
+        var copy = self
+        copy.coverageAreaID = (trimmed?.isEmpty == false) ? trimmed : nil
+        return copy
+    }
 
     var cacheKey: String {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
-        return "\(formatter.string(from: dateRange.start))|\(formatter.string(from: dateRange.end))|\(imei ?? "all")|\(source.rawValue)"
+        return [
+            formatter.string(from: dateRange.start),
+            formatter.string(from: dateRange.end),
+            imei ?? "all",
+            source.rawValue,
+            coverageAreaID ?? "coverage:none"
+        ].joined(separator: "|")
     }
 }
 

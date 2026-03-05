@@ -46,15 +46,12 @@ final class TripsRepositoryLive: TripsRepository {
     }
 
     func loadTripMapBundle(query: TripQuery) async throws -> TripMapBundle {
-        let client = makeClient()
-        var queryItems = [
-            URLQueryItem(name: "start_date", value: dateFormatter.string(from: query.dateRange.start)),
-            URLQueryItem(name: "end_date", value: dateFormatter.string(from: query.dateRange.end))
-        ]
-
-        if let imei = query.imei, !imei.isEmpty {
-            queryItems.append(URLQueryItem(name: "imei", value: imei))
+        if query.isCoverageClipped {
+            return try await loadTripMapBundleFromGeoJSON(query: query)
         }
+
+        let client = makeClient()
+        let queryItems = mapBundleQueryItems(for: query)
 
         let cacheKey = "trip-map-bundle|\(query.cacheKey)"
         let cached = mapBundleCache.load(key: cacheKey)
@@ -204,6 +201,16 @@ final class TripsRepositoryLive: TripsRepository {
         return APIClient(baseURL: baseURL)
     }
 
+    private func loadTripMapBundleFromGeoJSON(query: TripQuery) async throws -> TripMapBundle {
+        let client = makeClient()
+        let data = try await TaskRetry.run {
+            try await client.get(path: "api/trips", query: self.tripsQueryItems(for: query))
+        }
+
+        let summaries = try TripAPIParser.parseTripFeatureCollection(data: data)
+        return TripAPIParser.buildTripMapBundle(from: summaries, query: query)
+    }
+
     private func remoteTrips(for interval: DateInterval, imei: String?) async throws -> [TripSummary] {
         let client = makeClient()
         var queryItems = [
@@ -225,6 +232,30 @@ final class TripsRepositoryLive: TripsRepository {
             AppLogger.network.error("Trip decoding failed. context=\(error.localizedDescription)")
             throw error
         }
+    }
+
+    private func mapBundleQueryItems(for query: TripQuery) -> [URLQueryItem] {
+        var queryItems = [
+            URLQueryItem(name: "start_date", value: dateFormatter.string(from: query.dateRange.start)),
+            URLQueryItem(name: "end_date", value: dateFormatter.string(from: query.dateRange.end))
+        ]
+
+        if let imei = query.imei, !imei.isEmpty {
+            queryItems.append(URLQueryItem(name: "imei", value: imei))
+        }
+
+        return queryItems
+    }
+
+    private func tripsQueryItems(for query: TripQuery) -> [URLQueryItem] {
+        var queryItems = mapBundleQueryItems(for: query)
+
+        if query.isCoverageClipped, let areaID = query.coverageAreaID {
+            queryItems.append(URLQueryItem(name: "clip_to_coverage", value: "true"))
+            queryItems.append(URLQueryItem(name: "coverage_area_id", value: areaID))
+        }
+
+        return queryItems
     }
 
     private func cachedTrips(query: TripQuery) throws -> [TripSummary] {
