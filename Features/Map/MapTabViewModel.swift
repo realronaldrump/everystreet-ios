@@ -207,6 +207,7 @@ final class MapTabViewModel {
         self.coordinateCache = coordinateCache
         self.settings = settings
         selectedCoverageAreaID = settings.selectedCoverageAreaID
+        locallyDrivenSegmentIDs = settings.locallyDrivenSegmentIDs(for: selectedCoverageAreaID)
     }
 
     func load(query: TripQuery, appModel: AppModel) async {
