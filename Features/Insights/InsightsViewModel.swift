@@ -8,7 +8,6 @@ final class InsightsViewModel {
 
     var metrics: MetricsSnapshot?
     var analytics: TripAnalyticsSnapshot?
-    var behavior: DriverBehaviorSnapshot?
 
     var isLoading = false
     var errorMessage: String?
@@ -24,7 +23,6 @@ final class InsightsViewModel {
         do {
             metrics = try await repository.loadMetrics(range: range)
             analytics = try await repository.loadTripAnalytics(range: range)
-            behavior = try await repository.loadDriverBehavior(range: range)
         } catch {
             errorMessage = error.localizedDescription
         }

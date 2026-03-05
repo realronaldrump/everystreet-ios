@@ -9,25 +9,25 @@ enum AppTheme {
 
     // MARK: - Color Palette
 
-    // Backgrounds — deep dark with subtle blue undertone
-    static let background = Color(red: 0.04, green: 0.04, blue: 0.07)
-    static let elevatedBackground = Color(red: 0.07, green: 0.07, blue: 0.13)
+    // Backgrounds — rich dark with subtle cool undertone
+    static let background = Color(red: 0.05, green: 0.05, blue: 0.08)
+    static let elevatedBackground = Color(red: 0.08, green: 0.08, blue: 0.12)
 
-    // Surfaces — slightly lifted from background
-    static let surface = Color(red: 0.10, green: 0.11, blue: 0.18)
-    static let surfaceraised = Color(red: 0.13, green: 0.14, blue: 0.23)
+    // Surfaces — lifted from background
+    static let surface = Color(red: 0.10, green: 0.11, blue: 0.16)
+    static let surfaceraised = Color(red: 0.14, green: 0.15, blue: 0.21)
 
     // Card fills for glass morphism
-    static let card = Color(red: 0.10, green: 0.11, blue: 0.19)
-    static let cardHighlight = Color(red: 0.14, green: 0.16, blue: 0.26)
+    static let card = Color(red: 0.10, green: 0.11, blue: 0.17)
+    static let cardHighlight = Color(red: 0.14, green: 0.16, blue: 0.23)
 
-    // Primary accent — electric cyan
-    static let accent = Color(red: 0.24, green: 0.70, blue: 0.95)
-    static let accentMuted = Color(red: 0.12, green: 0.25, blue: 0.36)
+    // Primary accent — vivid cyan-blue
+    static let accent = Color(red: 0.20, green: 0.67, blue: 0.98)
+    static let accentMuted = Color(red: 0.10, green: 0.22, blue: 0.34)
 
-    // Secondary accent — warm amber
-    static let accentWarm = Color(red: 1.0, green: 0.70, blue: 0.28)
-    static let accentWarmMuted = Color(red: 0.30, green: 0.20, blue: 0.08)
+    // Secondary accent — warm amber/gold
+    static let accentWarm = Color(red: 1.0, green: 0.72, blue: 0.30)
+    static let accentWarmMuted = Color(red: 0.28, green: 0.19, blue: 0.07)
 
     // Route visualization
     static let routeRecent = Color(red: 0.30, green: 0.85, blue: 1.0)
@@ -39,14 +39,43 @@ enum AppTheme {
     static let error = Color(red: 0.92, green: 0.34, blue: 0.38)
 
     // Text
-    static let textPrimary = Color.white
-    static let textSecondary = Color.white.opacity(0.55)
-    static let textTertiary = Color.white.opacity(0.32)
+    static let textPrimary = Color.white.opacity(0.95)
+    static let textSecondary = Color.white.opacity(0.58)
+    static let textTertiary = Color.white.opacity(0.35)
 
     // Borders & Dividers
     static let border = Color.white.opacity(0.08)
     static let borderLight = Color.white.opacity(0.14)
     static let divider = Color.white.opacity(0.06)
+
+    // MARK: - Coverage Tier Colors
+
+    /// Coverage ≥ 80%
+    static let coverageExcellent = Color(red: 0.30, green: 0.82, blue: 0.55)
+    /// Coverage 50–79%
+    static let coverageGood = Color(red: 0.20, green: 0.67, blue: 0.98)
+    /// Coverage 25–49%
+    static let coverageModerate = Color(red: 1.0, green: 0.72, blue: 0.30)
+    /// Coverage < 25%
+    static let coverageLow = Color(red: 0.92, green: 0.40, blue: 0.42)
+
+    static func coverageColor(for percentage: Double) -> Color {
+        switch percentage {
+        case 80...: return coverageExcellent
+        case 50..<80: return coverageGood
+        case 25..<50: return coverageModerate
+        default: return coverageLow
+        }
+    }
+
+    static func coverageGradient(for percentage: Double) -> LinearGradient {
+        let base = coverageColor(for: percentage)
+        return LinearGradient(
+            colors: [base, base.opacity(0.6)],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
+    }
 
     // MARK: - Spacing
 
@@ -55,23 +84,28 @@ enum AppTheme {
     static let spacingMD: CGFloat = 12
     static let spacingLG: CGFloat = 16
     static let spacingXL: CGFloat = 20
-    static let spacingXXL: CGFloat = 24
+    static let spacingXXL: CGFloat = 28
 
     // MARK: - Corner Radii
 
-    static let radiusSM: CGFloat = 8
-    static let radiusMD: CGFloat = 12
-    static let radiusLG: CGFloat = 16
-    static let radiusXL: CGFloat = 20
+    static let radiusSM: CGFloat = 10
+    static let radiusMD: CGFloat = 14
+    static let radiusLG: CGFloat = 18
+    static let radiusXL: CGFloat = 22
 
     // MARK: - Stat Card Colors (for visual variety in grids)
 
-    static let statDistance = Color(red: 0.24, green: 0.70, blue: 0.95)
-    static let statDuration = Color(red: 0.65, green: 0.55, blue: 1.0)
+    static let statDistance = Color(red: 0.20, green: 0.67, blue: 0.98)
+    static let statDuration = Color(red: 0.62, green: 0.52, blue: 1.0)
     static let statSpeed = Color(red: 0.30, green: 0.82, blue: 0.55)
-    static let statFuel = Color(red: 1.0, green: 0.70, blue: 0.28)
+    static let statFuel = Color(red: 1.0, green: 0.72, blue: 0.30)
     static let statIdle = Color(red: 0.92, green: 0.34, blue: 0.38)
     static let statMaxSpeed = Color(red: 1.0, green: 0.52, blue: 0.60)
+
+    // MARK: - Chart Colors
+    static let chartPrimary = Color(red: 0.36, green: 0.75, blue: 1.0)
+    static let chartSecondary = Color(red: 0.62, green: 0.52, blue: 1.0)
+    static let chartTertiary = Color(red: 0.30, green: 0.82, blue: 0.55)
 }
 
 // MARK: - Gradients
@@ -82,7 +116,7 @@ extension LinearGradient {
             colors: [
                 AppTheme.background,
                 AppTheme.elevatedBackground,
-                Color(red: 0.02, green: 0.02, blue: 0.05),
+                Color(red: 0.03, green: 0.03, blue: 0.06),
             ],
             startPoint: .top,
             endPoint: .bottom
@@ -92,8 +126,8 @@ extension LinearGradient {
     static var glassCard: LinearGradient {
         LinearGradient(
             colors: [
-                AppTheme.card.opacity(0.80),
-                AppTheme.cardHighlight.opacity(0.55),
+                AppTheme.card.opacity(0.75),
+                AppTheme.cardHighlight.opacity(0.50),
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
@@ -107,6 +141,18 @@ extension LinearGradient {
             endPoint: .trailing
         )
     }
+
+    static func coverageCardGradient(for percentage: Double) -> LinearGradient {
+        let color = AppTheme.coverageColor(for: percentage)
+        return LinearGradient(
+            colors: [
+                AppTheme.card.opacity(0.75),
+                color.opacity(0.08),
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
 }
 
 // MARK: - Glass Card Modifier
@@ -114,6 +160,7 @@ extension LinearGradient {
 struct GlassCardModifier: ViewModifier {
     let padding: CGFloat
     let cornerRadius: CGFloat
+    let tintColor: Color?
 
     func body(content: Content) -> some View {
         content
@@ -121,18 +168,29 @@ struct GlassCardModifier: ViewModifier {
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(.ultraThinMaterial)
-                    .opacity(0.5)
+                    .opacity(0.45)
             )
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(LinearGradient.glassCard)
+                    .fill(
+                        tintColor.map { color in
+                            LinearGradient(
+                                colors: [
+                                    AppTheme.card.opacity(0.75),
+                                    color.opacity(0.08),
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        } ?? LinearGradient.glassCard
+                    )
             )
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .stroke(
                         LinearGradient(
                             colors: [
-                                Color.white.opacity(0.15),
+                                (tintColor ?? Color.white).opacity(0.18),
                                 Color.white.opacity(0.04),
                             ],
                             startPoint: .topLeading,
@@ -141,13 +199,17 @@ struct GlassCardModifier: ViewModifier {
                         lineWidth: 0.5
                     )
             )
-            .shadow(color: Color.black.opacity(0.28), radius: 12, x: 0, y: 6)
+            .shadow(color: Color.black.opacity(0.22), radius: 16, x: 0, y: 8)
     }
 }
 
 extension View {
     func glassCard(padding: CGFloat = AppTheme.spacingLG, cornerRadius: CGFloat = AppTheme.radiusLG) -> some View {
-        modifier(GlassCardModifier(padding: padding, cornerRadius: cornerRadius))
+        modifier(GlassCardModifier(padding: padding, cornerRadius: cornerRadius, tintColor: nil))
+    }
+
+    func glassCard(tint: Color, padding: CGFloat = AppTheme.spacingLG, cornerRadius: CGFloat = AppTheme.radiusLG) -> some View {
+        modifier(GlassCardModifier(padding: padding, cornerRadius: cornerRadius, tintColor: tint))
     }
 }
 
@@ -240,10 +302,12 @@ extension ButtonStyle where Self == AccentButtonStyle {
 struct SectionHeaderView: View {
     let title: String
     let icon: String?
+    let tint: Color
 
-    init(_ title: String, icon: String? = nil) {
+    init(_ title: String, icon: String? = nil, tint: Color = AppTheme.accent) {
         self.title = title
         self.icon = icon
+        self.tint = tint
     }
 
     var body: some View {
@@ -251,10 +315,12 @@ struct SectionHeaderView: View {
             if let icon {
                 Image(systemName: icon)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(AppTheme.accent)
+                    .foregroundStyle(tint)
+                    .frame(width: 26, height: 26)
+                    .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
             }
             Text(title)
-                .font(.title3.weight(.semibold))
+                .font(.headline.weight(.semibold))
                 .foregroundStyle(AppTheme.textPrimary)
         }
     }
@@ -269,28 +335,30 @@ struct StatCardView: View {
     let color: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
-            HStack(spacing: AppTheme.spacingSM) {
-                Image(systemName: icon)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(color)
-                    .frame(width: 24, height: 24)
-                    .background(color.opacity(0.15), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                Spacer()
+        VStack(alignment: .leading, spacing: AppTheme.spacingMD) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(color)
+                .frame(width: 30, height: 30)
+                .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            Spacer(minLength: 0)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(value)
+                    .font(.title3.weight(.bold).monospacedDigit())
+                    .foregroundStyle(AppTheme.textPrimary)
+                    .contentTransition(.numericText())
+
+                Text(title)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(AppTheme.textTertiary)
+                    .textCase(.uppercase)
+                    .tracking(0.6)
             }
-
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(AppTheme.textSecondary)
-                .textCase(.uppercase)
-                .tracking(0.5)
-
-            Text(value)
-                .font(.title3.weight(.bold).monospacedDigit())
-                .foregroundStyle(AppTheme.textPrimary)
-                .contentTransition(.numericText())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(minHeight: 90)
         .glassCard(padding: AppTheme.spacingMD, cornerRadius: AppTheme.radiusMD)
     }
 }
@@ -322,20 +390,23 @@ struct MetricChipView: View {
 enum AppAppearance {
     @MainActor static func configure() {
         #if canImport(UIKit)
-        // Tab bar
+        // Tab bar — translucent dark
         let tabAppearance = UITabBarAppearance()
-        tabAppearance.configureWithOpaqueBackground()
-        tabAppearance.backgroundColor = UIColor(AppTheme.background.opacity(0.92))
+        tabAppearance.configureWithDefaultBackground()
+        tabAppearance.backgroundColor = UIColor(AppTheme.background.opacity(0.85))
         tabAppearance.shadowColor = .clear
+        tabAppearance.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterialDark)
 
         let normalAttrs: [NSAttributedString.Key: Any] = [
-            .foregroundColor: UIColor.white.withAlphaComponent(0.35),
+            .foregroundColor: UIColor.white.withAlphaComponent(0.30),
+            .font: UIFont.systemFont(ofSize: 10, weight: .medium),
         ]
         let selectedAttrs: [NSAttributedString.Key: Any] = [
             .foregroundColor: UIColor(AppTheme.accent),
+            .font: UIFont.systemFont(ofSize: 10, weight: .semibold),
         ]
 
-        tabAppearance.stackedLayoutAppearance.normal.iconColor = UIColor.white.withAlphaComponent(0.35)
+        tabAppearance.stackedLayoutAppearance.normal.iconColor = UIColor.white.withAlphaComponent(0.30)
         tabAppearance.stackedLayoutAppearance.normal.titleTextAttributes = normalAttrs
         tabAppearance.stackedLayoutAppearance.selected.iconColor = UIColor(AppTheme.accent)
         tabAppearance.stackedLayoutAppearance.selected.titleTextAttributes = selectedAttrs
@@ -343,10 +414,11 @@ enum AppAppearance {
         UITabBar.appearance().standardAppearance = tabAppearance
         UITabBar.appearance().scrollEdgeAppearance = tabAppearance
 
-        // Navigation bar
+        // Navigation bar — translucent with blur
         let navAppearance = UINavigationBarAppearance()
-        navAppearance.configureWithOpaqueBackground()
-        navAppearance.backgroundColor = UIColor(AppTheme.background.opacity(0.85))
+        navAppearance.configureWithDefaultBackground()
+        navAppearance.backgroundColor = UIColor(AppTheme.background.opacity(0.78))
+        navAppearance.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterialDark)
         navAppearance.shadowColor = .clear
         navAppearance.titleTextAttributes = [
             .foregroundColor: UIColor.white,
@@ -354,7 +426,7 @@ enum AppAppearance {
         ]
         navAppearance.largeTitleTextAttributes = [
             .foregroundColor: UIColor.white,
-            .font: UIFont.systemFont(ofSize: 34, weight: .bold),
+            .font: UIFont.systemFont(ofSize: 32, weight: .bold),
         ]
 
         UINavigationBar.appearance().standardAppearance = navAppearance

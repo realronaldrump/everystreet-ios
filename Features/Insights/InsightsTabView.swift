@@ -15,7 +15,7 @@ struct InsightsTabView: View {
             LinearGradient.appBackground.ignoresSafeArea()
 
             ScrollView {
-                VStack(spacing: AppTheme.spacingLG) {
+                VStack(spacing: AppTheme.spacingXL) {
                     GlobalFilterBar(appModel: appModel) {
                         Task { await viewModel.load(range: appModel.activeDateRange) }
                     }
@@ -28,10 +28,6 @@ struct InsightsTabView: View {
                         weekdayChart(analytics)
                         hourlyChart(analytics)
                         dailyDistanceChart(analytics)
-                    }
-
-                    if let behavior = viewModel.behavior {
-                        behaviorSection(behavior)
                     }
 
                     if let error = viewModel.errorMessage {
@@ -57,18 +53,22 @@ struct InsightsTabView: View {
     // MARK: - Metrics Grid
 
     private func metricsSection(_ metrics: MetricsSnapshot) -> some View {
-        LazyVGrid(columns: [.init(.flexible()), .init(.flexible())], spacing: AppTheme.spacingMD) {
-            StatCardView(title: "Total Trips", value: "\(metrics.totalTrips)", icon: "road.lanes", color: AppTheme.statDistance)
-            StatCardView(title: "Distance", value: String(format: "%.1f mi", metrics.totalDistance), icon: "point.topleft.down.to.point.bottomright.curvepath", color: AppTheme.statDuration)
-            StatCardView(title: "Avg Speed", value: String(format: "%.1f mph", metrics.avgSpeed), icon: "gauge.medium", color: AppTheme.statSpeed)
-            StatCardView(title: "Max Speed", value: String(format: "%.1f mph", metrics.maxSpeed), icon: "gauge.high", color: AppTheme.statMaxSpeed)
+        VStack(alignment: .leading, spacing: AppTheme.spacingMD) {
+            SectionHeaderView("Overview", icon: "chart.bar.xaxis")
+
+            LazyVGrid(columns: [.init(.flexible()), .init(.flexible())], spacing: AppTheme.spacingSM) {
+                StatCardView(title: "Total Trips", value: "\(metrics.totalTrips)", icon: "road.lanes", color: AppTheme.statDistance)
+                StatCardView(title: "Distance", value: String(format: "%.1f mi", metrics.totalDistance), icon: "point.topleft.down.to.point.bottomright.curvepath", color: AppTheme.statDuration)
+                StatCardView(title: "Avg Speed", value: String(format: "%.1f mph", metrics.avgSpeed), icon: "gauge.medium", color: AppTheme.statSpeed)
+                StatCardView(title: "Max Speed", value: String(format: "%.1f mph", metrics.maxSpeed), icon: "gauge.high", color: AppTheme.statMaxSpeed)
+            }
         }
     }
 
     // MARK: - Charts
 
     private func weekdayChart(_ analytics: TripAnalyticsSnapshot) -> some View {
-        chartCard(title: "Weekday Distribution", icon: "calendar") {
+        chartCard(title: "Trips by Day", icon: "calendar") {
             Chart(analytics.weekdayDistribution) { point in
                 BarMark(
                     x: .value("Day", point.label),
@@ -76,35 +76,46 @@ struct InsightsTabView: View {
                 )
                 .foregroundStyle(
                     LinearGradient(
-                        colors: [AppTheme.accent, AppTheme.accent.opacity(0.6)],
+                        colors: [AppTheme.chartPrimary, AppTheme.chartPrimary.opacity(0.5)],
                         startPoint: .top,
                         endPoint: .bottom
                     )
                 )
-                .cornerRadius(AppTheme.spacingXS)
+                .cornerRadius(4)
             }
             .chartYAxis {
-                AxisMarks(position: .leading) { _ in
-                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [4]))
+                AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { value in
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.4, dash: [5, 4]))
                         .foregroundStyle(AppTheme.divider)
-                    AxisValueLabel()
-                        .foregroundStyle(AppTheme.textTertiary)
-                        .font(.system(size: 10, weight: .medium).monospacedDigit())
+                    AxisValueLabel {
+                        if let intVal = value.as(Int.self) {
+                            Text("\(intVal)")
+                                .font(.system(size: 11, weight: .medium, design: .rounded).monospacedDigit())
+                                .foregroundStyle(AppTheme.textTertiary)
+                        }
+                    }
                 }
             }
             .chartXAxis {
-                AxisMarks { _ in
-                    AxisValueLabel()
-                        .foregroundStyle(AppTheme.textSecondary)
-                        .font(.system(size: 10, weight: .medium))
+                AxisMarks { value in
+                    AxisValueLabel {
+                        if let str = value.as(String.self) {
+                            Text(abbreviateDay(str))
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundStyle(AppTheme.textSecondary)
+                        }
+                    }
                 }
             }
-            .frame(height: 180)
+            .chartPlotStyle { plot in
+                plot.padding(.top, 8)
+            }
+            .frame(height: 200)
         }
     }
 
     private func hourlyChart(_ analytics: TripAnalyticsSnapshot) -> some View {
-        chartCard(title: "Hourly Distribution", icon: "clock") {
+        chartCard(title: "Time of Day", icon: "clock") {
             Chart(analytics.timeDistribution) { point in
                 AreaMark(
                     x: .value("Hour", point.label),
@@ -112,7 +123,7 @@ struct InsightsTabView: View {
                 )
                 .foregroundStyle(
                     LinearGradient(
-                        colors: [AppTheme.accentWarm.opacity(0.3), AppTheme.accentWarm.opacity(0.02)],
+                        colors: [AppTheme.accentWarm.opacity(0.25), AppTheme.accentWarm.opacity(0.02)],
                         startPoint: .top,
                         endPoint: .bottom
                     )
@@ -124,26 +135,37 @@ struct InsightsTabView: View {
                     y: .value("Trips", point.count)
                 )
                 .foregroundStyle(AppTheme.accentWarm)
-                .lineStyle(StrokeStyle(lineWidth: 2))
+                .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round))
                 .interpolationMethod(.catmullRom)
             }
             .chartYAxis {
-                AxisMarks(position: .leading) { _ in
-                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [4]))
+                AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { value in
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.4, dash: [5, 4]))
                         .foregroundStyle(AppTheme.divider)
-                    AxisValueLabel()
-                        .foregroundStyle(AppTheme.textTertiary)
-                        .font(.system(size: 10, weight: .medium).monospacedDigit())
+                    AxisValueLabel {
+                        if let intVal = value.as(Int.self) {
+                            Text("\(intVal)")
+                                .font(.system(size: 11, weight: .medium, design: .rounded).monospacedDigit())
+                                .foregroundStyle(AppTheme.textTertiary)
+                        }
+                    }
                 }
             }
             .chartXAxis {
-                AxisMarks { _ in
-                    AxisValueLabel()
-                        .foregroundStyle(AppTheme.textSecondary)
-                        .font(.system(size: 10, weight: .medium))
+                AxisMarks(values: .automatic(desiredCount: 6)) { value in
+                    AxisValueLabel {
+                        if let str = value.as(String.self) {
+                            Text(abbreviateHour(str))
+                                .font(.system(size: 10, weight: .medium, design: .rounded))
+                                .foregroundStyle(AppTheme.textTertiary)
+                        }
+                    }
                 }
             }
-            .frame(height: 180)
+            .chartPlotStyle { plot in
+                plot.padding(.top, 8)
+            }
+            .frame(height: 200)
         }
     }
 
@@ -156,103 +178,42 @@ struct InsightsTabView: View {
                 )
                 .foregroundStyle(
                     LinearGradient(
-                        colors: [AppTheme.routeRecent, AppTheme.routeRecent.opacity(0.5)],
+                        colors: [AppTheme.chartTertiary, AppTheme.chartTertiary.opacity(0.4)],
                         startPoint: .top,
                         endPoint: .bottom
                     )
                 )
-                .cornerRadius(2)
+                .cornerRadius(3)
             }
             .chartYAxis {
-                AxisMarks(position: .leading) { _ in
-                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [4]))
+                AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { value in
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.4, dash: [5, 4]))
                         .foregroundStyle(AppTheme.divider)
-                    AxisValueLabel()
-                        .foregroundStyle(AppTheme.textTertiary)
-                        .font(.system(size: 10, weight: .medium).monospacedDigit())
+                    AxisValueLabel {
+                        if let doubleVal = value.as(Double.self) {
+                            Text(doubleVal < 10 ? String(format: "%.1f", doubleVal) : String(format: "%.0f", doubleVal))
+                                .font(.system(size: 11, weight: .medium, design: .rounded).monospacedDigit())
+                                .foregroundStyle(AppTheme.textTertiary)
+                        }
+                    }
                 }
             }
             .chartXAxis {
-                AxisMarks(values: .automatic(desiredCount: 6)) { _ in
-                    AxisValueLabel()
-                        .foregroundStyle(AppTheme.textTertiary)
-                        .font(.system(size: 9, weight: .medium))
-                }
-            }
-            .frame(height: 180)
-        }
-    }
-
-    // MARK: - Behavior Section
-
-    private func behaviorSection(_ behavior: DriverBehaviorSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: AppTheme.spacingLG) {
-            SectionHeaderView("Driver Behavior", icon: "steeringwheel")
-
-            HStack(spacing: AppTheme.spacingSM) {
-                behaviorStat(
-                    title: "Hard Brake",
-                    value: "\(behavior.hardBrakingCount ?? 0)",
-                    icon: "exclamationmark.triangle.fill",
-                    color: AppTheme.error
-                )
-                behaviorStat(
-                    title: "Hard Accel",
-                    value: "\(behavior.hardAccelerationCount ?? 0)",
-                    icon: "bolt.fill",
-                    color: AppTheme.accentWarm
-                )
-                behaviorStat(
-                    title: "Idle",
-                    value: formatMinutes(behavior.totalIdleDuration),
-                    icon: "pause.circle.fill",
-                    color: AppTheme.statIdle
-                )
-            }
-
-            if !behavior.monthlySeries.isEmpty {
-                Chart(behavior.monthlySeries) { point in
-                    LineMark(
-                        x: .value("Month", point.label),
-                        y: .value("Distance", point.value)
-                    )
-                    .foregroundStyle(AppTheme.accent)
-                    .lineStyle(StrokeStyle(lineWidth: 2))
-                    .interpolationMethod(.catmullRom)
-
-                    AreaMark(
-                        x: .value("Month", point.label),
-                        y: .value("Distance", point.value)
-                    )
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [AppTheme.accent.opacity(0.2), AppTheme.accent.opacity(0.02)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .interpolationMethod(.catmullRom)
-                }
-                .chartYAxis {
-                    AxisMarks(position: .leading) { _ in
-                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [4]))
-                            .foregroundStyle(AppTheme.divider)
-                        AxisValueLabel()
-                            .foregroundStyle(AppTheme.textTertiary)
-                            .font(.system(size: 10, weight: .medium).monospacedDigit())
+                AxisMarks(values: .automatic(desiredCount: 5)) { value in
+                    AxisValueLabel {
+                        if let str = value.as(String.self) {
+                            Text(abbreviateDate(str))
+                                .font(.system(size: 10, weight: .medium, design: .rounded))
+                                .foregroundStyle(AppTheme.textTertiary)
+                        }
                     }
                 }
-                .chartXAxis {
-                    AxisMarks { _ in
-                        AxisValueLabel()
-                            .foregroundStyle(AppTheme.textTertiary)
-                            .font(.system(size: 10, weight: .medium))
-                    }
-                }
-                .frame(height: 160)
             }
+            .chartPlotStyle { plot in
+                plot.padding(.top, 8)
+            }
+            .frame(height: 200)
         }
-        .glassCard()
     }
 
     // MARK: - Helpers
@@ -265,27 +226,36 @@ struct InsightsTabView: View {
         .glassCard()
     }
 
-    private func behaviorStat(title: String, value: String, icon: String, color: Color) -> some View {
-        VStack(spacing: AppTheme.spacingSM) {
-            Image(systemName: icon)
-                .font(.caption)
-                .foregroundStyle(color)
-                .frame(width: 28, height: 28)
-                .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+    /// Shorten day labels like "Monday" -> "Mon", "Tuesday" -> "Tue"
+    private func abbreviateDay(_ day: String) -> String {
+        if day.count > 3 { return String(day.prefix(3)) }
+        return day
+    }
 
-            Text(value)
-                .font(.headline.weight(.bold).monospacedDigit())
-                .foregroundStyle(AppTheme.textPrimary)
-
-            Text(title)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(AppTheme.textTertiary)
-                .textCase(.uppercase)
-                .tracking(0.3)
+    /// Shorten hour labels to concise format
+    private func abbreviateHour(_ hour: String) -> String {
+        let trimmed = hour.trimmingCharacters(in: .whitespaces)
+        if trimmed.count <= 5 { return trimmed }
+        if let num = Int(trimmed) {
+            let suffix = num >= 12 ? "p" : "a"
+            let display = num == 0 ? 12 : (num > 12 ? num - 12 : num)
+            return "\(display)\(suffix)"
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, AppTheme.spacingMD)
-        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous))
+        return String(trimmed.prefix(5))
+    }
+
+    /// Shorten date labels like "2025-03-01" -> "Mar 1"
+    private func abbreviateDate(_ dateStr: String) -> String {
+        let parts = dateStr.split(separator: "-")
+        if parts.count == 3, let month = Int(parts[1]), let day = Int(parts[2]) {
+            let months = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                          "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+            if month >= 1, month <= 12 {
+                return "\(months[month]) \(day)"
+            }
+        }
+        if dateStr.count > 6 { return String(dateStr.suffix(5)) }
+        return dateStr
     }
 
     private var loadingOverlay: some View {
@@ -309,14 +279,5 @@ struct InsightsTabView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassCard(padding: AppTheme.spacingMD)
-    }
-
-    private func formatMinutes(_ value: Double?) -> String {
-        guard let value else { return "--" }
-        let minutes = Int(value / 60)
-        if minutes >= 60 {
-            return "\(minutes / 60)h \(minutes % 60)m"
-        }
-        return "\(minutes)m"
     }
 }

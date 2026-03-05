@@ -95,11 +95,11 @@ struct GlobalFilterBar: View {
                 .padding(.vertical, compact ? AppTheme.spacingXS + 2 : AppTheme.spacingSM)
                 .background(
                     Capsule()
-                        .fill(isActive ? AppTheme.accent.opacity(0.22) : Color.white.opacity(0.05))
+                        .fill(isActive ? AppTheme.accent.opacity(0.28) : Color.white.opacity(0.04))
                 )
                 .overlay(
                     Capsule()
-                        .stroke(isActive ? AppTheme.accent.opacity(0.5) : Color.clear, lineWidth: 0.5)
+                        .stroke(isActive ? AppTheme.accent.opacity(0.45) : Color.clear, lineWidth: 0.5)
                 )
         }
         .buttonStyle(.pressable)

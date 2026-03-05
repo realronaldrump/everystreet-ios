@@ -59,7 +59,7 @@ struct PlacesTabView: View {
         VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
             SectionHeaderView("Frequent Destinations", icon: "mappin.circle.fill")
 
-            Text("Top places ranked by visit count and time spent")
+            Text("Ranked by visit frequency")
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.textTertiary)
         }
@@ -71,6 +71,7 @@ struct PlacesTabView: View {
 
     private func placeRow(_ place: PlaceSummary, rank: Int) -> some View {
         let isSelected = viewModel.selectedPlace?.id == place.id
+        let rankColor: Color = rank <= 3 ? AppTheme.accentWarm : AppTheme.textTertiary
 
         return Button {
             Task {
@@ -78,25 +79,25 @@ struct PlacesTabView: View {
             }
         } label: {
             HStack(spacing: AppTheme.spacingMD) {
-                // Rank indicator
+                // Rank badge
                 Text("\(rank)")
                     .font(.caption.weight(.bold).monospacedDigit())
-                    .foregroundStyle(isSelected ? AppTheme.accent : AppTheme.textTertiary)
+                    .foregroundStyle(rank <= 3 ? .white : AppTheme.textSecondary)
                     .frame(width: 28, height: 28)
                     .background(
-                        (isSelected ? AppTheme.accentMuted : Color.white.opacity(0.05))
-                    , in: RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous))
+                        rank <= 3 ? rankColor.opacity(0.85) : Color.white.opacity(0.06)
+                    , in: RoundedRectangle(cornerRadius: 8, style: .continuous))
 
                 VStack(alignment: .leading, spacing: AppTheme.spacingXS) {
                     Text(place.name)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(AppTheme.textPrimary)
-                        .lineLimit(2)
+                        .lineLimit(1)
                         .multilineTextAlignment(.leading)
 
                     HStack(spacing: AppTheme.spacingSM) {
                         MetricChipView(icon: "figure.walk", label: "Visits", value: "\(place.totalVisits ?? 0)")
-                        MetricChipView(icon: "clock", label: "Avg Stay", value: place.averageTimeSpent ?? "--")
+                        MetricChipView(icon: "clock", label: "Avg", value: place.averageTimeSpent ?? "--")
                     }
                 }
 
@@ -107,6 +108,10 @@ struct PlacesTabView: View {
                         .font(.title3)
                         .foregroundStyle(AppTheme.accent)
                         .transition(.scale.combined(with: .opacity))
+                } else {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.textTertiary)
                 }
             }
             .glassCard(padding: AppTheme.spacingMD)
@@ -176,12 +181,12 @@ struct PlacesTabView: View {
     private var emptyStateView: some View {
         VStack(spacing: AppTheme.spacingLG) {
             Image(systemName: "mappin.circle")
-                .font(.system(size: 40))
+                .font(.system(size: 48))
                 .foregroundStyle(AppTheme.textTertiary)
-            Text("No places found")
-                .font(.headline)
+            Text("No Places Found")
+                .font(.title3.weight(.semibold))
                 .foregroundStyle(AppTheme.textSecondary)
-            Text("Drive to some places first")
+            Text("Places appear after recording trips")
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.textTertiary)
         }

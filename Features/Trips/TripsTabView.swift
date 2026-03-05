@@ -79,15 +79,13 @@ struct TripsTabView: View {
 
     private func sectionHeader(_ date: Date) -> some View {
         HStack(spacing: AppTheme.spacingSM) {
-            Circle()
-                .fill(AppTheme.accent.opacity(0.4))
-                .frame(width: 6, height: 6)
-
             Text(date, style: .date)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(AppTheme.textSecondary)
                 .textCase(.uppercase)
-                .tracking(0.6)
+                .tracking(0.5)
+
+            VStack { Divider().background(AppTheme.divider) }
         }
         .padding(.vertical, AppTheme.spacingXS)
     }
@@ -95,51 +93,52 @@ struct TripsTabView: View {
     // MARK: - Trip Row
 
     private func tripRow(_ trip: TripSummary) -> some View {
-        HStack(spacing: 0) {
-            // Accent strip
+        HStack(spacing: AppTheme.spacingMD) {
+            // Time column
+            VStack(spacing: 2) {
+                Text(trip.startTime, style: .time)
+                    .font(.caption.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(AppTheme.textPrimary)
+            }
+            .frame(width: 52, alignment: .leading)
+
+            // Accent line
             RoundedRectangle(cornerRadius: 1.5)
-                .fill(AppTheme.accent.opacity(0.5))
-                .frame(width: 3)
+                .fill(AppTheme.accent.opacity(0.4))
+                .frame(width: 2.5)
                 .padding(.vertical, AppTheme.spacingXS)
 
+            // Content
             VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
-                // Time + Distance
-                HStack(alignment: .firstTextBaseline) {
-                    Text(trip.startTime, style: .time)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(AppTheme.textPrimary)
-
-                    Spacer()
-
-                    Text(distanceText(trip.distance))
-                        .font(.subheadline.weight(.bold).monospacedDigit())
-                        .foregroundStyle(AppTheme.accent)
-                }
-
-                // Destination
                 Text(trip.destination ?? trip.startLocation ?? "Unknown route")
-                    .font(.subheadline)
-                    .foregroundStyle(AppTheme.textSecondary)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(AppTheme.textPrimary)
                     .lineLimit(1)
 
-                // Metric chips
                 HStack(spacing: AppTheme.spacingSM) {
-                    MetricChipView(icon: "clock", label: "Duration", value: durationText(trip.duration))
-                    MetricChipView(icon: "gauge.high", label: "Max", value: speedText(trip.maxSpeed))
+                    MetricChipView(icon: "road.lanes", label: "Dist", value: distanceText(trip.distance))
+                    MetricChipView(icon: "clock", label: "Dur", value: durationText(trip.duration))
                     if let label = trip.vehicleLabel {
                         MetricChipView(icon: "car.fill", label: "Vehicle", value: label)
                     }
                 }
             }
-            .padding(.leading, AppTheme.spacingMD)
+
+            Spacer(minLength: 0)
+
+            // Distance badge
+            Text(distanceText(trip.distance))
+                .font(.caption.weight(.bold).monospacedDigit())
+                .foregroundStyle(AppTheme.accent)
         }
-        .padding(AppTheme.spacingMD)
+        .padding(.vertical, AppTheme.spacingSM)
+        .padding(.horizontal, AppTheme.spacingMD)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                .fill(Color.white.opacity(0.04))
+                .fill(Color.white.opacity(0.03))
                 .overlay(
                     RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                        .stroke(Color.white.opacity(0.06), lineWidth: 0.5)
+                        .stroke(Color.white.opacity(0.05), lineWidth: 0.5)
                 )
         )
     }
@@ -160,10 +159,10 @@ struct TripsTabView: View {
     private var emptyStateView: some View {
         VStack(spacing: AppTheme.spacingLG) {
             Image(systemName: "road.lanes")
-                .font(.system(size: 40))
+                .font(.system(size: 48))
                 .foregroundStyle(AppTheme.textTertiary)
-            Text("No trips found")
-                .font(.headline)
+            Text("No Trips Found")
+                .font(.title3.weight(.semibold))
                 .foregroundStyle(AppTheme.textSecondary)
             Text("Adjust your filters or date range")
                 .font(.subheadline)

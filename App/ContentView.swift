@@ -30,14 +30,7 @@ struct ContentView: View {
                 InsightsTabView(appModel: appModel, repository: container.dashboardRepository)
             }
             .tabItem {
-                Label("Insights", systemImage: "chart.bar.fill")
-            }
-
-            NavigationStack {
-                PlacesTabView(appModel: appModel, repository: container.placesRepository)
-            }
-            .tabItem {
-                Label("Places", systemImage: "mappin.circle.fill")
+                Label("Insights", systemImage: "chart.xyaxis.line")
             }
 
             NavigationStack {
@@ -48,10 +41,10 @@ struct ContentView: View {
             }
 
             NavigationStack {
-                SettingsView(appModel: appModel, tripsRepository: container.tripsRepository, settingsRepository: container.settingsRepository)
+                SettingsView(appModel: appModel, tripsRepository: container.tripsRepository, settingsRepository: container.settingsRepository, placesRepository: container.placesRepository)
             }
             .tabItem {
-                Label("Settings", systemImage: "gearshape.fill")
+                Label("More", systemImage: "ellipsis")
             }
         }
         .tint(AppTheme.accent)

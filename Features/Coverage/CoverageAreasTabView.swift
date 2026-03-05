@@ -38,7 +38,7 @@ struct CoverageAreasTabView: View {
                 }
             }
         }
-        .navigationTitle("Coverage Areas")
+        .navigationTitle("Coverage")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -47,6 +47,8 @@ struct CoverageAreasTabView: View {
                     }
                 } label: {
                     Image(systemName: "arrow.clockwise")
+                        .font(.subheadline.weight(.medium))
+                        .symbolEffect(.rotate, isActive: viewModel.isLoading)
                 }
                 .disabled(viewModel.isLoading)
             }
@@ -58,49 +60,103 @@ struct CoverageAreasTabView: View {
         }
     }
 
+    // MARK: - Summary Card
+
     private var coverageSummaryCard: some View {
-        VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
-            SectionHeaderView("Coverage Overview", icon: "square.3.layers.3d")
+        VStack(alignment: .leading, spacing: AppTheme.spacingMD) {
+            SectionHeaderView("Overview", icon: "square.3.layers.3d")
 
-            HStack(spacing: AppTheme.spacingSM) {
-                StatCardView(
-                    title: "Areas",
-                    value: "\(viewModel.areas.count)",
-                    icon: "map",
-                    color: AppTheme.accent
-                )
-                StatCardView(
-                    title: "Avg Coverage",
-                    value: String(format: "%.1f%%", averageCoverage),
-                    icon: "percent",
-                    color: AppTheme.success
-                )
-            }
+            // Big average coverage ring
+            HStack(spacing: AppTheme.spacingXL) {
+                ZStack {
+                    Circle()
+                        .stroke(AppTheme.divider, lineWidth: 6)
+                        .frame(width: 72, height: 72)
 
-            HStack(spacing: AppTheme.spacingSM) {
-                metricChip(title: "Driven", value: String(format: "%.1f mi", totalDrivenMiles))
-                metricChip(title: "Driveable", value: String(format: "%.1f mi", totalDriveableMiles))
-                metricChip(title: "Segments", value: "\(totalSegments)")
+                    Circle()
+                        .trim(from: 0, to: min(averageCoverage / 100.0, 1))
+                        .stroke(
+                            AppTheme.coverageGradient(for: averageCoverage),
+                            style: StrokeStyle(lineWidth: 6, lineCap: .round)
+                        )
+                        .frame(width: 72, height: 72)
+                        .rotationEffect(.degrees(-90))
+
+                    VStack(spacing: 0) {
+                        Text(String(format: "%.0f", averageCoverage))
+                            .font(.title2.weight(.bold).monospacedDigit())
+                            .foregroundStyle(AppTheme.coverageColor(for: averageCoverage))
+                        Text("%")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(AppTheme.textTertiary)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
+                    HStack(spacing: AppTheme.spacingSM) {
+                        summaryChip(title: "Areas", value: "\(viewModel.areas.count)", icon: "map")
+                        summaryChip(title: "Segments", value: "\(totalSegments)", icon: "point.topleft.down.to.point.bottomright.curvepath")
+                    }
+                    HStack(spacing: AppTheme.spacingSM) {
+                        summaryChip(title: "Driven", value: String(format: "%.0f mi", totalDrivenMiles), icon: "car.fill")
+                        summaryChip(title: "Remaining", value: String(format: "%.0f mi", totalDriveableMiles - totalDrivenMiles), icon: "road.lanes")
+                    }
+                }
             }
         }
         .glassCard()
     }
 
+    private func summaryChip(title: String, value: String, icon: String) -> some View {
+        HStack(spacing: AppTheme.spacingXS) {
+            Image(systemName: icon)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(AppTheme.textTertiary)
+            Text(value)
+                .font(.caption2.weight(.bold).monospacedDigit())
+                .foregroundStyle(AppTheme.textSecondary)
+        }
+        .padding(.horizontal, AppTheme.spacingSM)
+        .padding(.vertical, AppTheme.spacingXS + 1)
+        .background(Color.white.opacity(0.05), in: Capsule())
+    }
+
+    // MARK: - Area Card (color coded)
+
     private func coverageAreaCard(_ area: CoverageArea) -> some View {
         let isExpanded = expandedAreaIDs.contains(area.id)
+        let tierColor = AppTheme.coverageColor(for: area.coveragePercentage)
 
-        return VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
+        return VStack(alignment: .leading, spacing: AppTheme.spacingMD) {
+            // Header row
             HStack(alignment: .top, spacing: AppTheme.spacingSM) {
+                // Colored ring indicator
+                ZStack {
+                    Circle()
+                        .stroke(AppTheme.divider, lineWidth: 3)
+                        .frame(width: 40, height: 40)
+
+                    Circle()
+                        .trim(from: 0, to: min(area.coveragePercentage / 100.0, 1))
+                        .stroke(tierColor, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                        .frame(width: 40, height: 40)
+                        .rotationEffect(.degrees(-90))
+
+                    Text(String(format: "%.0f", area.coveragePercentage))
+                        .font(.system(size: 11, weight: .bold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(tierColor)
+                }
+
                 VStack(alignment: .leading, spacing: 3) {
                     Text(area.displayName)
-                        .font(.headline)
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(AppTheme.textPrimary)
                         .lineLimit(2)
 
                     Text(area.areaType.uppercased())
-                        .font(.caption2.weight(.semibold))
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(AppTheme.textTertiary)
-                        .tracking(0.6)
+                        .tracking(0.8)
                 }
 
                 Spacer()
@@ -108,7 +164,7 @@ struct CoverageAreasTabView: View {
                 HStack(spacing: AppTheme.spacingXS) {
                     Circle()
                         .fill(statusColor(for: area))
-                        .frame(width: 7, height: 7)
+                        .frame(width: 6, height: 6)
                     Text(area.status.capitalized)
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(AppTheme.textSecondary)
@@ -116,33 +172,41 @@ struct CoverageAreasTabView: View {
                 }
                 .padding(.horizontal, AppTheme.spacingSM)
                 .padding(.vertical, AppTheme.spacingXS)
-                .background(Color.white.opacity(0.06), in: Capsule())
+                .background(statusColor(for: area).opacity(0.10), in: Capsule())
             }
 
+            // Coverage bar
             VStack(alignment: .leading, spacing: AppTheme.spacingXS) {
-                HStack {
-                    Text("Coverage")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(AppTheme.textTertiary)
-                    Spacer()
-                    Text(String(format: "%.1f%%", area.coveragePercentage))
-                        .font(.caption.weight(.bold).monospacedDigit())
-                        .foregroundStyle(AppTheme.accent)
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .fill(Color.white.opacity(0.06))
+                            .frame(height: 6)
+
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [tierColor, tierColor.opacity(0.7)],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(width: geo.size.width * min(max(CGFloat(area.coveragePercentage / 100.0), 0), 1), height: 6)
+                    }
                 }
-
-                ProgressView(value: min(max(area.coveragePercentage / 100.0, 0), 1))
-                    .progressViewStyle(.linear)
-                    .tint(AppTheme.accent)
+                .frame(height: 6)
             }
 
+            // Stats row
             HStack(spacing: AppTheme.spacingSM) {
-                metricChip(title: "Driven", value: "\(area.drivenSegments)")
-                metricChip(title: "Undriven", value: "\(area.undrivenSegments)")
-                metricChip(title: "Miles", value: String(format: "%.1f", area.drivenLengthMiles))
+                metricChip(title: "Driven", value: "\(area.drivenSegments)", color: AppTheme.success)
+                metricChip(title: "Remaining", value: "\(area.undrivenSegments)", color: AppTheme.warning)
+                metricChip(title: "Miles", value: String(format: "%.1f", area.drivenLengthMiles), color: tierColor)
             }
 
+            // Expand button
             Button {
-                withAnimation(.easeOut(duration: 0.2)) {
+                withAnimation(.easeOut(duration: 0.25)) {
                     if isExpanded {
                         expandedAreaIDs.remove(area.id)
                     } else {
@@ -151,15 +215,15 @@ struct CoverageAreasTabView: View {
                 }
             } label: {
                 HStack(spacing: AppTheme.spacingXS) {
-                    Image(systemName: isExpanded ? "chevron.up.circle.fill" : "chevron.down.circle.fill")
-                        .font(.subheadline)
-                    Text(isExpanded ? "Hide Interactive Map" : "Show Interactive Map")
-                        .font(.subheadline.weight(.semibold))
+                    Image(systemName: isExpanded ? "chevron.up" : "map")
+                        .font(.caption.weight(.semibold))
+                    Text(isExpanded ? "Hide Map" : "View Map")
+                        .font(.caption.weight(.semibold))
                 }
-                .foregroundStyle(AppTheme.accent)
+                .foregroundStyle(tierColor)
                 .padding(.horizontal, AppTheme.spacingMD)
                 .padding(.vertical, AppTheme.spacingSM)
-                .background(AppTheme.accentMuted.opacity(0.5), in: Capsule())
+                .background(tierColor.opacity(0.10), in: Capsule())
             }
             .buttonStyle(.pressable)
 
@@ -171,22 +235,27 @@ struct CoverageAreasTabView: View {
                     ))
             }
         }
-        .glassCard()
+        .glassCard(tint: tierColor)
     }
 
-    private func metricChip(title: String, value: String) -> some View {
+    private func metricChip(title: String, value: String, color: Color) -> some View {
         HStack(spacing: AppTheme.spacingXS) {
+            Circle()
+                .fill(color)
+                .frame(width: 5, height: 5)
             Text(title)
                 .font(.caption2)
                 .foregroundStyle(AppTheme.textTertiary)
             Text(value)
-                .font(.caption2.weight(.semibold).monospacedDigit())
+                .font(.caption2.weight(.bold).monospacedDigit())
                 .foregroundStyle(AppTheme.textSecondary)
         }
         .padding(.horizontal, AppTheme.spacingSM)
         .padding(.vertical, AppTheme.spacingXS)
-        .background(Color.white.opacity(0.06), in: Capsule())
+        .background(Color.white.opacity(0.05), in: Capsule())
     }
+
+    // MARK: - States
 
     private var loadingView: some View {
         VStack(spacing: AppTheme.spacingLG) {
@@ -202,16 +271,15 @@ struct CoverageAreasTabView: View {
     private var emptyStateView: some View {
         VStack(spacing: AppTheme.spacingLG) {
             Image(systemName: "square.3.layers.3d")
-                .font(.system(size: 42))
+                .font(.system(size: 48))
                 .foregroundStyle(AppTheme.textTertiary)
-            Text("No Coverage Areas Found")
-                .font(.headline)
+            Text("No Coverage Areas")
+                .font(.title3.weight(.semibold))
                 .foregroundStyle(AppTheme.textSecondary)
-            Text("Add coverage areas from the server first, then refresh this tab.")
+            Text("Add coverage areas on the server,\nthen pull to refresh.")
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.textTertiary)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, AppTheme.spacingLG)
         }
     }
 
@@ -226,6 +294,8 @@ struct CoverageAreasTabView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassCard(padding: AppTheme.spacingMD)
     }
+
+    // MARK: - Computed
 
     private var averageCoverage: Double {
         guard !viewModel.areas.isEmpty else { return 0 }
