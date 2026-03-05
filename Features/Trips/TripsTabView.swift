@@ -39,7 +39,6 @@ struct TripsTabView: View {
                 } label: {
                     Image(systemName: "arrow.clockwise")
                         .font(.subheadline.weight(.medium))
-                        .symbolEffect(.rotate, isActive: viewModel.isLoading)
                 }
             }
         }

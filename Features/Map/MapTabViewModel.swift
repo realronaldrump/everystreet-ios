@@ -22,7 +22,7 @@ enum MapLayerMode: String, CaseIterable, Identifiable {
         switch self {
         case .trips: "Trips"
         case .coverage: "Coverage"
-        case .combined: "Blend"
+        case .combined: "Combined"
         }
     }
 }

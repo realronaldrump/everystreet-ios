@@ -9,9 +9,6 @@ final class AppModel {
 
     var selectedPreset: DateRangePreset
     var customDateRange: DateInterval
-    var selectedIMEI: String?
-
-    var vehicles: [Vehicle] = []
     var firstTripDate: Date?
 
     var isBootstrapping = false
@@ -29,7 +26,6 @@ final class AppModel {
         let savedStart = settings.customStartDate ?? Calendar.current.date(byAdding: .day, value: -30, to: now) ?? now
         let savedEnd = settings.customEndDate ?? now
         customDateRange = DateInterval(start: min(savedStart, savedEnd), end: max(savedStart, savedEnd))
-        selectedIMEI = settings.selectedIMEI
     }
 
     var activeDateRange: DateInterval {
@@ -40,7 +36,7 @@ final class AppModel {
     }
 
     var activeQuery: TripQuery {
-        TripQuery(dateRange: activeDateRange, imei: selectedIMEI, source: .rawTripsOnly)
+        TripQuery(dateRange: activeDateRange, imei: nil, source: .rawTripsOnly)
     }
 
     func bootstrap() async {
@@ -49,7 +45,6 @@ final class AppModel {
         bootstrapErrorMessage = nil
 
         do {
-            vehicles = try await tripsRepository.loadVehicles(forceRefresh: false)
             firstTripDate = try await tripsRepository.firstTripDate()
             lastUpdated = await tripsRepository.lastSyncDate(for: activeQuery)
             syncState = .idle
@@ -59,14 +54,6 @@ final class AppModel {
         }
 
         isBootstrapping = false
-    }
-
-    func refreshVehicleList() async {
-        do {
-            vehicles = try await tripsRepository.loadVehicles(forceRefresh: true)
-        } catch {
-            bootstrapErrorMessage = error.localizedDescription
-        }
     }
 
     func setPreset(_ preset: DateRangePreset) {
@@ -80,11 +67,6 @@ final class AppModel {
         settings.customEndDate = customDateRange.end
         selectedPreset = .custom
         settings.selectedPreset = .custom
-    }
-
-    func setSelectedVehicle(_ imei: String?) {
-        selectedIMEI = imei
-        settings.selectedIMEI = imei
     }
 
     func markSyncStarted() {

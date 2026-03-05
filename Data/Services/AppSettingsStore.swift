@@ -8,7 +8,6 @@ final class AppSettingsStore {
         static let selectedPreset = "selected_date_preset"
         static let customStart = "custom_start_date"
         static let customEnd = "custom_end_date"
-        static let selectedIMEI = "selected_imei"
     }
 
     private static let fixedAPIBaseURL = URL(string: "https://www.everystreet.me")!
@@ -38,10 +37,5 @@ final class AppSettingsStore {
     var customEndDate: Date? {
         get { defaults.object(forKey: Keys.customEnd) as? Date }
         set { defaults.set(newValue, forKey: Keys.customEnd) }
-    }
-
-    var selectedIMEI: String? {
-        get { defaults.string(forKey: Keys.selectedIMEI) }
-        set { defaults.set(newValue, forKey: Keys.selectedIMEI) }
     }
 }

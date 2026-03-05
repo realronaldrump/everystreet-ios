@@ -26,7 +26,7 @@ final class TripDetailViewModel {
             if let date = loaded.startTime {
                 let dayStart = Calendar.current.startOfDay(for: date)
                 let dayEnd = Calendar.current.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
-                let query = TripQuery(dateRange: DateInterval(start: dayStart, end: dayEnd), imei: loaded.imei, source: .rawTripsOnly)
+                let query = TripQuery(dateRange: DateInterval(start: dayStart, end: dayEnd), imei: nil, source: .rawTripsOnly)
                 relatedTrips = try await repository.loadTrips(query: query)
                     .filter { $0.transactionId != tripID }
                     .prefix(12)

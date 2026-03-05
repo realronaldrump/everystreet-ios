@@ -179,10 +179,6 @@ struct MapTabView: View {
             VStack(spacing: 0) {
                 Spacer()
 
-                mapLegend
-                    .padding(.horizontal, AppTheme.spacingLG)
-                    .padding(.bottom, legendBottomInset)
-
                 commandTray
             }
         }
@@ -206,7 +202,7 @@ struct MapTabView: View {
                 controlButton(icon: "line.3.horizontal.decrease", tint: hasActiveFilters ? AppTheme.accent : AppTheme.textSecondary, badge: hasActiveFilters) {
                     showFilterSheet = true
                 }
-                controlButton(icon: "arrow.clockwise", tint: AppTheme.accent, spinning: viewModel.isCurrentLayerLoading) {
+                controlButton(icon: "arrow.clockwise", tint: AppTheme.accent) {
                     Task {
                         await viewModel.refreshCurrentLayer(query: appModel.activeQuery, appModel: appModel)
                     }
@@ -228,57 +224,94 @@ struct MapTabView: View {
     }
 
     private var layerModeSwitch: some View {
-        HStack(spacing: 6) {
-            ForEach(MapLayerMode.allCases) { layer in
-                let isSelected = viewModel.selectedLayer == layer
-                Button {
-                    Task {
-                        await viewModel.setLayer(layer)
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: layerIcon(for: layer))
-                            .font(.system(size: 11, weight: .semibold))
-                        Text(layer.shortTitle)
-                            .font(.caption.weight(.semibold))
-                    }
-                    .foregroundStyle(isSelected ? Color.white : AppTheme.textSecondary)
-                    .padding(.horizontal, AppTheme.spacingMD)
-                    .padding(.vertical, AppTheme.spacingXS + 3)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(isSelected ? AppTheme.accent : Color.clear)
-                    )
-                }
-                .buttonStyle(.pressable)
+        HStack(spacing: 8) {
+            layerToggleButton(
+                title: "TRIPS",
+                icon: "car.rear.waves.up",
+                isOn: tripsLayerEnabled
+            ) {
+                setLayerSelection(tripsEnabled: !tripsLayerEnabled, streetsEnabled: streetsLayerEnabled)
+            }
+
+            layerToggleButton(
+                title: "STREETS",
+                icon: "point.topleft.down.to.point.bottomright.curvepath",
+                isOn: streetsLayerEnabled
+            ) {
+                setLayerSelection(tripsEnabled: tripsLayerEnabled, streetsEnabled: !streetsLayerEnabled)
             }
         }
-        .padding(4)
+        .padding(5)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(AppTheme.panelInset)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(AppTheme.panelBorder, lineWidth: 0.8)
         )
     }
 
-    private func layerIcon(for layer: MapLayerMode) -> String {
-        switch layer {
-        case .trips:
-            return "car.rear.waves.up"
-        case .coverage:
-            return "point.topleft.down.to.point.bottomright.curvepath"
-        case .combined:
-            return "square.3.layers.3d.top.filled"
+    private var tripsLayerEnabled: Bool {
+        viewModel.selectedLayer != .coverage
+    }
+
+    private var streetsLayerEnabled: Bool {
+        viewModel.selectedLayer != .trips
+    }
+
+    private func setLayerSelection(tripsEnabled: Bool, streetsEnabled: Bool) {
+        guard let targetLayer = layerMode(forTripsEnabled: tripsEnabled, streetsEnabled: streetsEnabled) else {
+            return
         }
+
+        Task {
+            await viewModel.setLayer(targetLayer)
+        }
+    }
+
+    private func layerMode(forTripsEnabled tripsEnabled: Bool, streetsEnabled: Bool) -> MapLayerMode? {
+        switch (tripsEnabled, streetsEnabled) {
+        case (true, false):
+            return .trips
+        case (false, true):
+            return .coverage
+        case (true, true):
+            return .combined
+        case (false, false):
+            return nil
+        }
+    }
+
+    private func layerToggleButton(title: String, icon: String, isOn: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .semibold))
+                Text(title)
+                    .font(AppTypography.captionHeavy)
+                    .tracking(0.6)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+            .foregroundStyle(isOn ? Color.white : Color.white.opacity(0.9))
+            .frame(maxWidth: .infinity)
+            .frame(height: 38)
+            .background(
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(isOn ? AppTheme.accent : AppTheme.surfacePanelRaised)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .stroke(isOn ? AppTheme.accent.opacity(0.95) : AppTheme.panelBorderStrong, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.pressable)
     }
 
     private func controlButton(
         icon: String,
         tint: Color,
-        spinning: Bool = false,
         badge: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
@@ -295,13 +328,6 @@ struct MapTabView: View {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .stroke(AppTheme.panelBorder, lineWidth: 0.8)
                 )
-                .rotationEffect(.degrees(spinning ? 360 : 0))
-                .animation(
-                    spinning
-                        ? .linear(duration: 1).repeatForever(autoreverses: false)
-                        : .default,
-                    value: spinning
-                )
                 .overlay(alignment: .topTrailing) {
                     if badge {
                         Circle()
@@ -314,107 +340,55 @@ struct MapTabView: View {
         .buttonStyle(.pressable)
     }
 
+    @ViewBuilder
     private var syncIndicator: some View {
-        let spec = syncBadgeSpec
-        return HStack(spacing: 6) {
-            Image(systemName: spec.icon)
+        switch appModel.syncState {
+        case .syncing:
+            statusBadge(
+                icon: "arrow.triangle.2.circlepath",
+                text: "SYNC",
+                tint: AppTheme.accent,
+                background: AppTheme.accentMuted,
+                pulse: true
+            )
+        case .stale:
+            statusBadge(
+                icon: "clock.fill",
+                text: "CACHED",
+                tint: AppTheme.accentWarm,
+                background: AppTheme.accentWarmMuted
+            )
+        case .failed:
+            statusBadge(
+                icon: "exclamationmark.triangle.fill",
+                text: "ERROR",
+                tint: AppTheme.error,
+                background: AppTheme.error.opacity(0.2)
+            )
+        case .idle:
+            EmptyView()
+        }
+    }
+
+    private func statusBadge(icon: String, text: String, tint: Color, background: Color, pulse: Bool = false) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
                 .font(.system(size: 10, weight: .bold))
-                .symbolEffect(.pulse, isActive: spec.text == "SYNC")
-            Text(spec.text)
+                .symbolEffect(.pulse, isActive: pulse)
+            Text(text)
                 .font(.system(size: 10, weight: .bold, design: .rounded))
         }
-        .foregroundStyle(spec.tint)
+        .foregroundStyle(tint)
         .padding(.horizontal, AppTheme.spacingSM)
         .padding(.vertical, AppTheme.spacingXS + 1)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(spec.background)
+                .fill(background)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(spec.tint.opacity(0.35), lineWidth: 0.8)
+                .stroke(tint.opacity(0.35), lineWidth: 0.8)
         )
-    }
-
-    private var syncBadgeSpec: (icon: String, text: String, tint: Color, background: Color) {
-        switch appModel.syncState {
-        case .syncing:
-            return ("arrow.triangle.2.circlepath", "SYNC", AppTheme.accent, AppTheme.accentMuted)
-        case .stale:
-            return ("clock.fill", "CACHED", AppTheme.accentWarm, AppTheme.accentWarmMuted)
-        case .failed:
-            return ("exclamationmark.triangle.fill", "ERROR", AppTheme.error, AppTheme.error.opacity(0.2))
-        case .idle:
-            return ("checkmark.seal.fill", "HISTORY", AppTheme.success, AppTheme.success.opacity(0.16))
-        }
-    }
-
-    private var mapLegend: some View {
-        Group {
-            switch viewModel.selectedLayer {
-            case .trips:
-                tripLegend
-            case .coverage:
-                coverageLegend
-            case .combined:
-                combinedLegend
-            }
-        }
-    }
-
-    private var tripLegend: some View {
-        HStack(spacing: AppTheme.spacingSM) {
-            legendSwatch(label: "Trips", color: AppTheme.routeRecent, width: 18)
-
-            Text("Historical Trips")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(AppTheme.textSecondary)
-        }
-        .padding(.horizontal, AppTheme.spacingMD)
-        .padding(.vertical, AppTheme.spacingSM)
-        .glassCard(padding: 0, cornerRadius: AppTheme.radiusMD)
-    }
-
-    private var coverageLegend: some View {
-        HStack(spacing: AppTheme.spacingSM) {
-            legendSwatch(label: "Driven", color: streetColor(for: .driven), width: 18)
-            legendSwatch(label: "Undriven", color: streetColor(for: .undriven), width: 16)
-            legendSwatch(label: "Undriveable", color: streetColor(for: .undriveable), width: 12, dashed: true)
-        }
-        .padding(.horizontal, AppTheme.spacingMD)
-        .padding(.vertical, AppTheme.spacingSM)
-        .glassCard(padding: 0, cornerRadius: AppTheme.radiusMD)
-    }
-
-    private var combinedLegend: some View {
-        HStack(spacing: AppTheme.spacingSM) {
-            legendSwatch(label: "Trips", color: AppTheme.routeRecent, width: 14)
-            legendSwatch(label: "Driven", color: streetColor(for: .driven), width: 14)
-            legendSwatch(label: "Undriven", color: streetColor(for: .undriven), width: 12)
-        }
-        .padding(.horizontal, AppTheme.spacingMD)
-        .padding(.vertical, AppTheme.spacingSM)
-        .glassCard(padding: 0, cornerRadius: AppTheme.radiusMD)
-    }
-
-    private func legendSwatch(label: String, color: Color, width: CGFloat, dashed: Bool = false) -> some View {
-        HStack(spacing: 6) {
-            Group {
-                if dashed {
-                    RoundedRectangle(cornerRadius: 1, style: .continuous)
-                        .stroke(style: StrokeStyle(lineWidth: 2, dash: [4, 3]))
-                        .foregroundStyle(color)
-                } else {
-                    RoundedRectangle(cornerRadius: 1, style: .continuous)
-                        .fill(color)
-                }
-            }
-            .frame(width: width, height: 3)
-
-            Text(label)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(AppTheme.textSecondary)
-        }
     }
 
     private var primaryStreetFilters: [CoverageStreetFilter] {
@@ -752,17 +726,6 @@ struct MapTabView: View {
         }
     }
 
-    private var legendBottomInset: CGFloat {
-        switch trayDetent {
-        case .collapsed:
-            return 92
-        case .peek:
-            return 190
-        case .expanded:
-            return 332
-        }
-    }
-
     private var layerHeadline: String {
         switch viewModel.selectedLayer {
         case .trips:
@@ -1071,11 +1034,11 @@ struct MapTabView: View {
     private var hasActiveFilters: Bool {
         switch viewModel.selectedLayer {
         case .trips:
-            return appModel.selectedIMEI != nil || appModel.selectedPreset != .sevenDays
+            return appModel.selectedPreset != .sevenDays
         case .coverage:
             return viewModel.coverageFilter != .all
         case .combined:
-            let tripFilters = appModel.selectedIMEI != nil || appModel.selectedPreset != .sevenDays
+            let tripFilters = appModel.selectedPreset != .sevenDays
             return tripFilters || viewModel.coverageFilter != .all
         }
     }
