@@ -943,8 +943,8 @@ final class MapTabViewModel {
         guard let baseBox = TripBoundingBox(coordinates: coordinates) else { return nil }
 
         let centerLatitude = (baseBox.minLat + baseBox.maxLat) / 2
-        let latitudePadding = 40 / 111_000
-        let longitudePadding = 40 / max(cos(centerLatitude * .pi / 180) * 111_000, 1)
+        let latitudePadding = 40.0 / 111_000.0
+        let longitudePadding = 40.0 / max(cos(centerLatitude * .pi / 180) * 111_000.0, 1.0)
 
         return TripBoundingBox(
             minLat: baseBox.minLat - latitudePadding,
