@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 63;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -70,7 +70,7 @@
 
 /* Begin PBXFileReference section */
 		0EE6E2695B250A8E5AFCE8CC /* SyncStatusBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncStatusBanner.swift; sourceTree = "<group>"; };
-		10D2E4DDA8FB88C86AC99F26 /* EveryStreetCompanionTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = EveryStreetCompanionTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		10D2E4DDA8FB88C86AC99F26 /* EveryStreetCompanionTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EveryStreetCompanionTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		11921F7E83262DCA6C177DD6 /* CachePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CachePolicy.swift; sourceTree = "<group>"; };
 		14CA7344624A8BECB0D89118 /* SettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewModel.swift; sourceTree = "<group>"; };
 		15049C6D933B0763BCC60430 /* TripModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripModels.swift; sourceTree = "<group>"; };
@@ -119,7 +119,7 @@
 		D88D2D8FAB34C2E5611E52DB /* CoverageAreasTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverageAreasTabView.swift; sourceTree = "<group>"; };
 		D8B21B357B1453541104B62D /* CoverageAPIParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverageAPIParser.swift; sourceTree = "<group>"; };
 		EF581B385B71BBCA41C9A268 /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
-		F6C0992BF64B4FDC3F275C44 /* EveryStreetCompanion.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = EveryStreetCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F6C0992BF64B4FDC3F275C44 /* EveryStreetCompanion.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EveryStreetCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F9D2C0713D8F35A517A40821 /* JSONHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONHelpers.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -403,7 +403,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 2600;
+				LastUpgradeCheck = 2630;
 				TargetAttributes = {
 					6594437C837335A814C63108 = {
 						DevelopmentTeam = CZ3N26YJ75;
@@ -421,7 +421,6 @@
 			);
 			mainGroup = 612EA1A30EB6E88F6F5675DC;
 			minimizedProjectReferenceProxies = 1;
-			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -568,6 +567,7 @@
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -581,6 +581,7 @@
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 6.2;
@@ -649,6 +650,7 @@
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -669,6 +671,7 @@
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 6.2;

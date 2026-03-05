@@ -90,7 +90,7 @@ final class MapTabViewModel {
     var selectedLayer: MapLayerMode = .trips
     var coverageAreas: [CoverageArea] = []
     var selectedCoverageAreaID: String?
-    var coverageFilter: CoverageStreetFilter = .all
+    var coverageFilter: CoverageStreetFilter = .undriven
     var coverageFeatures: [CoverageMapFeature] = []
     var locallyDrivenSegmentIDs: Set<String> = []
     var coverageTotalInViewport = 0
