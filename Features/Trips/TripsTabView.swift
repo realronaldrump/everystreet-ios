@@ -31,7 +31,7 @@ struct TripsTabView: View {
             .padding(.horizontal, AppTheme.spacingLG)
         }
         .navigationTitle("Trips")
-        .searchable(text: $viewModel.searchText, prompt: "Search places or trip id")
+        .searchable(text: $viewModel.searchText, prompt: "Search destinations or trip ID")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
