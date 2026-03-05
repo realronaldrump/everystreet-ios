@@ -22,6 +22,8 @@
   <string>$(CURRENT_PROJECT_VERSION)</string>
   <key>LSRequiresIPhoneOS</key>
   <true/>
+  <key>NSLocationWhenInUseUsageDescription</key>
+  <string>EveryStreet Companion uses your location to place you on the coverage map and guide you toward streets you still need to drive.</string>
   <key>UILaunchScreen</key>
   <dict/>
   <key>UIApplicationSceneManifest</key>

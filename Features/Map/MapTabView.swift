@@ -1,5 +1,6 @@
 import MapKit
 import SwiftUI
+import UIKit
 
 private enum MapTrayDetent: Int {
     case collapsed = 0
@@ -27,6 +28,7 @@ private enum MapTrayDetent: Int {
 struct OverlayMKMapView: UIViewRepresentable {
     let region: MKCoordinateRegion
     let regionRevision: Int
+    let showsUserLocation: Bool
     let overlayGroups: [OverlayRenderGroup]
     let onRegionChange: (MKCoordinateRegion) -> Void
 
@@ -39,6 +41,7 @@ struct OverlayMKMapView: UIViewRepresentable {
         mapView.delegate = context.coordinator
         mapView.showsCompass = false
         mapView.pointOfInterestFilter = .excludingAll
+        mapView.showsUserLocation = showsUserLocation
 
         if #available(iOS 17.0, *) {
             let config = MKStandardMapConfiguration(elevationStyle: .flat, emphasisStyle: .muted)
@@ -54,6 +57,10 @@ struct OverlayMKMapView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: MKMapView, context: Context) {
+        if uiView.showsUserLocation != showsUserLocation {
+            uiView.showsUserLocation = showsUserLocation
+        }
+
         context.coordinator.apply(groups: overlayGroups, to: uiView)
         context.coordinator.apply(region: region, revision: regionRevision, to: uiView)
     }
@@ -112,9 +119,12 @@ struct OverlayMKMapView: UIViewRepresentable {
 }
 
 struct MapTabView: View {
+    @Environment(\.openURL) private var openURL
     @Bindable var appModel: AppModel
     @State private var viewModel: MapTabViewModel
+    @State private var locationController = MapLocationController()
     @State private var showFilterSheet = false
+    @State private var shouldCenterOnNextLocationFix = false
     @State private var trayDetent: MapTrayDetent = .peek
 
     private let repository: TripsRepository
@@ -141,7 +151,8 @@ struct MapTabView: View {
             OverlayMKMapView(
                 region: viewModel.cameraRegion,
                 regionRevision: viewModel.cameraRevision,
-                overlayGroups: viewModel.activeOverlayGroups,
+                showsUserLocation: locationController.canDisplayUserLocation,
+                overlayGroups: mapOverlayGroups,
                 onRegionChange: { viewModel.update(region: $0) }
             )
             .ignoresSafeArea()
@@ -181,12 +192,28 @@ struct MapTabView: View {
 
                 commandTray
             }
+
+            VStack(spacing: 0) {
+                Spacer()
+
+                HStack {
+                    Spacer()
+                    mapActionStack
+                }
+                .padding(.horizontal, AppTheme.spacingLG)
+                .padding(.bottom, trayHeight + AppTheme.spacingLG)
+            }
         }
         .toolbar(.hidden, for: .navigationBar)
         .task {
+            locationController.prepare()
+
             if viewModel.allTrips.isEmpty {
                 await viewModel.load(query: appModel.activeQuery, appModel: appModel)
             }
+        }
+        .onChange(of: locationController.locationRevision) { _, _ in
+            centerOnDeferredLocationIfNeeded()
         }
         .sheet(isPresented: $showFilterSheet) {
             filterSheet
@@ -336,6 +363,169 @@ struct MapTabView: View {
                             .offset(x: 1, y: -1)
                     }
                 }
+        }
+        .buttonStyle(.pressable)
+    }
+
+    private var mapOverlayGroups: [OverlayRenderGroup] {
+        var groups = viewModel.activeOverlayGroups
+        if let liveTripOverlayGroup {
+            groups.append(liveTripOverlayGroup)
+        }
+        return groups
+    }
+
+    private var liveTripOverlayGroup: OverlayRenderGroup? {
+        let visibleSegments = trackedTripSegments
+        guard !visibleSegments.isEmpty else { return nil }
+
+        let polylines = visibleSegments.map { coordinates in
+            MKPolyline(coordinates: coordinates, count: coordinates.count)
+        }
+
+        return OverlayRenderGroup(
+            id: "live-trip-\(locationController.locationRevision)-\(polylines.count)",
+            overlay: MKMultiPolyline(polylines),
+            style: OverlayLineStyle(
+                color: UIColor(AppTheme.routeRecent),
+                lineWidth: 4.8,
+                alpha: 0.96
+            ),
+            semantic: .liveTrip
+        )
+    }
+
+    private var trackedTripSegments: [[CLLocationCoordinate2D]] {
+        locationController.trackedPathSegments.filter { $0.count > 1 }
+    }
+
+    private var mapActionStack: some View {
+        VStack(alignment: .trailing, spacing: AppTheme.spacingSM) {
+            if showTripRecordingControls {
+                HStack(spacing: AppTheme.spacingXS) {
+                    recordingControlButton(
+                        title: locationController.isTripRecording ? "Recording" : "Paused",
+                        icon: locationController.isTripRecording ? "record.circle.fill" : "pause.circle.fill",
+                        tint: locationController.isTripRecording ? AppTheme.error : AppTheme.accentWarm,
+                        action: {
+                            locationController.toggleTripRecording()
+                        }
+                    )
+
+                    if locationController.recordedPointCount > 0 {
+                        recordingControlButton(
+                            title: "Clear",
+                            icon: "trash",
+                            tint: AppTheme.textSecondary,
+                            action: {
+                                locationController.clearRecordedTrip()
+                            }
+                        )
+                    }
+                }
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
+
+            if let locationStatusTitle, let locationStatusSubtitle {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(locationStatusTitle)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.textPrimary)
+                    Text(locationStatusSubtitle)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, AppTheme.spacingMD)
+                .padding(.vertical, AppTheme.spacingSM + 1)
+                .frame(width: 204, alignment: .leading)
+                .glassCard(tint: locationAccent, padding: 0, cornerRadius: AppTheme.radiusMD)
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
+
+            Button {
+                handleLocationPrimaryAction()
+            } label: {
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [AppTheme.surfacePanelRaised, AppTheme.surfacePanel],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+
+                    Circle()
+                        .stroke(locationAccent.opacity(0.52), lineWidth: 1)
+
+                    Circle()
+                        .inset(by: 8)
+                        .fill(locationAccent.opacity(0.14))
+
+                    if locationController.controlState == .locating {
+                        Circle()
+                            .stroke(locationAccent.opacity(0.22), lineWidth: 6)
+                            .scaleEffect(1.08)
+                    }
+
+                    Image(systemName: locationSymbol)
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(locationAccent)
+                        .symbolEffect(.pulse, isActive: locationController.controlState == .locating)
+                }
+                .frame(width: 58, height: 58)
+                .overlay(alignment: .bottomTrailing) {
+                    Circle()
+                        .fill(locationStatusDot)
+                        .frame(width: 12, height: 12)
+                        .overlay(
+                            Circle()
+                                .stroke(AppTheme.surfacePanel, lineWidth: 2)
+                        )
+                }
+                .shadow(color: Color.black.opacity(0.34), radius: 14, x: 0, y: 8)
+                .shadow(color: locationAccent.opacity(0.18), radius: 18, x: 0, y: 10)
+            }
+            .buttonStyle(.pressable)
+            .accessibilityLabel(locationAccessibilityLabel)
+            .accessibilityHint(locationAccessibilityHint)
+        }
+        .animation(.spring(response: 0.26, dampingFraction: 0.86), value: locationController.controlState)
+        .animation(.spring(response: 0.26, dampingFraction: 0.86), value: locationController.isTripRecording)
+        .animation(.spring(response: 0.26, dampingFraction: 0.86), value: locationController.recordedPointCount)
+    }
+
+    private var showTripRecordingControls: Bool {
+        locationController.canDisplayUserLocation || locationController.recordedPointCount > 0
+    }
+
+    private func recordingControlButton(
+        title: String,
+        icon: String,
+        tint: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .bold))
+                Text(title)
+                    .font(.caption2.weight(.semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(tint)
+            .padding(.horizontal, AppTheme.spacingMD)
+            .padding(.vertical, AppTheme.spacingSM)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(AppTheme.surfacePanel)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(tint.opacity(0.28), lineWidth: 0.9)
+            )
+            .shadow(color: Color.black.opacity(0.26), radius: 10, x: 0, y: 6)
         }
         .buttonStyle(.pressable)
     }
@@ -1036,6 +1226,134 @@ struct MapTabView: View {
             RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous)
                 .stroke(AppTheme.warning.opacity(0.35), lineWidth: 0.8)
         )
+    }
+
+    private var locationSymbol: String {
+        switch locationController.controlState {
+        case .ready:
+            return "location.fill"
+        case .locating:
+            return "location.circle.fill"
+        case .needsPermission:
+            return "location.badge.plus"
+        case .blocked:
+            return "location.slash.fill"
+        }
+    }
+
+    private var locationAccent: Color {
+        switch locationController.controlState {
+        case .ready, .locating:
+            return AppTheme.accent
+        case .needsPermission:
+            return AppTheme.accentWarm
+        case .blocked:
+            return AppTheme.error
+        }
+    }
+
+    private var locationStatusDot: Color {
+        if locationController.canDisplayUserLocation, !locationController.isTripRecording {
+            return AppTheme.accentWarm
+        }
+
+        switch locationController.controlState {
+        case .ready:
+            return AppTheme.success
+        case .locating:
+            return AppTheme.accent
+        case .needsPermission:
+            return AppTheme.accentWarm
+        case .blocked:
+            return AppTheme.error
+        }
+    }
+
+    private var locationStatusTitle: String? {
+        if locationController.canDisplayUserLocation, !locationController.isTripRecording {
+            return "Recording Paused"
+        }
+
+        switch locationController.controlState {
+        case .ready:
+            return nil
+        case .locating:
+            return "Finding Your Position"
+        case .needsPermission:
+            return "Add Your Position"
+        case .blocked:
+            return "Location Is Blocked"
+        }
+    }
+
+    private var locationStatusSubtitle: String? {
+        if locationController.canDisplayUserLocation, !locationController.isTripRecording {
+            let points = locationController.recordedPointCount
+            return points > 0
+                ? "Current position still updates. Resume to keep extending the \(points)-point live trip line."
+                : "Current position still updates. Resume when you want the live trip line to grow again."
+        }
+
+        switch locationController.controlState {
+        case .ready:
+            return nil
+        case .locating:
+            return "Pulling a fresh GPS fix so you can line up with the street grid."
+        case .needsPermission:
+            return "Allow location access to see yourself against covered and undriven streets."
+        case .blocked:
+            return "Open Settings to put your car back on the map."
+        }
+    }
+
+    private var locationAccessibilityLabel: String {
+        switch locationController.controlState {
+        case .ready:
+            return "Center map on current location"
+        case .locating:
+            return "Locating current position"
+        case .needsPermission:
+            return "Enable current location on map"
+        case .blocked:
+            return "Open settings for location access"
+        }
+    }
+
+    private var locationAccessibilityHint: String {
+        switch locationController.controlState {
+        case .ready:
+            return "Centers the map on your current street."
+        case .locating:
+            return "Wait for a GPS fix to center the map."
+        case .needsPermission:
+            return "Requests location access."
+        case .blocked:
+            return "Opens the app settings screen."
+        }
+    }
+
+    private func handleLocationPrimaryAction() {
+        switch locationController.handlePrimaryAction() {
+        case let .centered(coordinate):
+            shouldCenterOnNextLocationFix = false
+            viewModel.focus(on: coordinate)
+        case .awaitingFix:
+            shouldCenterOnNextLocationFix = true
+        case .openSettings:
+            shouldCenterOnNextLocationFix = false
+            openAppSettings()
+        }
+    }
+
+    private func centerOnDeferredLocationIfNeeded() {
+        guard shouldCenterOnNextLocationFix, let coordinate = locationController.currentCoordinate else { return }
+        shouldCenterOnNextLocationFix = false
+        viewModel.focus(on: coordinate)
+    }
+
+    private func openAppSettings() {
+        guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
+        openURL(settingsURL)
     }
 
     private var hasActiveFilters: Bool {

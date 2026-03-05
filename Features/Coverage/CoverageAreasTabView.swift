@@ -372,6 +372,7 @@ private struct CoverageAreaMapPanel: View {
                 OverlayMKMapView(
                     region: viewModel.cameraRegion,
                     regionRevision: viewModel.cameraRevision,
+                    showsUserLocation: false,
                     overlayGroups: viewModel.activeOverlayGroups,
                     onRegionChange: { region in
                         viewModel.update(region: region)

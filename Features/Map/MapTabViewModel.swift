@@ -44,6 +44,7 @@ struct OverlayLineStyle: Hashable {
 enum OverlaySemantic: Hashable {
     case trip(bucket: Int)
     case coverage(status: CoverageStreetStatus)
+    case liveTrip
 }
 
 struct OverlayRenderGroup: Identifiable {
@@ -284,6 +285,23 @@ final class MapTabViewModel {
         currentRegion = region
         cameraRegion = region
         zoomBucket = MapGeometry.zoomBucket(for: region)
+        updateVisibleTrips()
+        updateCoverageViewportCount()
+    }
+
+    func focus(on coordinate: CLLocationCoordinate2D) {
+        let currentStreetScaleMeters = max(currentRegion.span.latitudeDelta * 111_000 * 0.75, 320)
+        let targetMeters = min(currentStreetScaleMeters, 1_400)
+        let region = MKCoordinateRegion(
+            center: coordinate,
+            latitudinalMeters: targetMeters,
+            longitudinalMeters: targetMeters
+        )
+
+        currentRegion = region
+        cameraRegion = region
+        zoomBucket = MapGeometry.zoomBucket(for: region)
+        cameraRevision += 1
         updateVisibleTrips()
         updateCoverageViewportCount()
     }

@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 63;
+	objectVersion = 77;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -21,6 +21,7 @@
 		40B95EF9D57ACDE5145E368E /* CoverageAreasTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D88D2D8FAB34C2E5611E52DB /* CoverageAreasTabView.swift */; };
 		46BBADD5B4F0E1CF6B3D4E86 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35CA3E42C57EDFC3279B063C /* APIClient.swift */; };
 		4CB49AF4FE3C491959ED4B51 /* CoverageAreasViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60A20EC467404B9E8D3CACFE /* CoverageAreasViewModel.swift */; };
+		511094AD4ACF9A1D21D482EA /* MapLocationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BB8316F855462DD2F74B884 /* MapLocationController.swift */; };
 		52ECCBAD8CD43AB717BE3847 /* TripModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15049C6D933B0763BCC60430 /* TripModels.swift */; };
 		5ED3019CA6B9619DAA85A3BF /* AppAPIParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F74B704D4BDA3C8932C1567 /* AppAPIParser.swift */; };
 		61EF159B70DE35113BFC3D87 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF581B385B71BBCA41C9A268 /* AppTheme.swift */; };
@@ -69,7 +70,7 @@
 
 /* Begin PBXFileReference section */
 		0EE6E2695B250A8E5AFCE8CC /* SyncStatusBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncStatusBanner.swift; sourceTree = "<group>"; };
-		10D2E4DDA8FB88C86AC99F26 /* EveryStreetCompanionTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EveryStreetCompanionTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		10D2E4DDA8FB88C86AC99F26 /* EveryStreetCompanionTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = EveryStreetCompanionTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		11921F7E83262DCA6C177DD6 /* CachePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CachePolicy.swift; sourceTree = "<group>"; };
 		14CA7344624A8BECB0D89118 /* SettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewModel.swift; sourceTree = "<group>"; };
 		15049C6D933B0763BCC60430 /* TripModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripModels.swift; sourceTree = "<group>"; };
@@ -106,6 +107,7 @@
 		9159CF7A80552FFCA42AD3C4 /* CoverageAPIParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverageAPIParserTests.swift; sourceTree = "<group>"; };
 		936AF43D0310FED68B253E48 /* CachedModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CachedModels.swift; sourceTree = "<group>"; };
 		94579BA64E7B9FCDC55F61D6 /* CoverageAreaMapViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverageAreaMapViewModel.swift; sourceTree = "<group>"; };
+		9BB8316F855462DD2F74B884 /* MapLocationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapLocationController.swift; sourceTree = "<group>"; };
 		9BB88300503D30AF26BC9011 /* AppSettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettingsStore.swift; sourceTree = "<group>"; };
 		9BE7B7D1AE8579DEDE7323D4 /* MapGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapGeometry.swift; sourceTree = "<group>"; };
 		A060223FFC977E05230E1B89 /* DateInterval+Helpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DateInterval+Helpers.swift"; sourceTree = "<group>"; };
@@ -117,7 +119,7 @@
 		D88D2D8FAB34C2E5611E52DB /* CoverageAreasTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverageAreasTabView.swift; sourceTree = "<group>"; };
 		D8B21B357B1453541104B62D /* CoverageAPIParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverageAPIParser.swift; sourceTree = "<group>"; };
 		EF581B385B71BBCA41C9A268 /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
-		F6C0992BF64B4FDC3F275C44 /* EveryStreetCompanion.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EveryStreetCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F6C0992BF64B4FDC3F275C44 /* EveryStreetCompanion.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = EveryStreetCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F9D2C0713D8F35A517A40821 /* JSONHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONHelpers.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -277,6 +279,7 @@
 		9207555F6CCEE71A4AF4D5AF /* Map */ = {
 			isa = PBXGroup;
 			children = (
+				9BB8316F855462DD2F74B884 /* MapLocationController.swift */,
 				7A2B72370398C6EC80878F16 /* MapTabView.swift */,
 				524386923986AEFC6D418CB9 /* MapTabViewModel.swift */,
 			);
@@ -403,6 +406,7 @@
 				LastUpgradeCheck = 2600;
 				TargetAttributes = {
 					6594437C837335A814C63108 = {
+						DevelopmentTeam = CZ3N26YJ75;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -417,6 +421,7 @@
 			);
 			mainGroup = 612EA1A30EB6E88F6F5675DC;
 			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -457,6 +462,7 @@
 				C0AE66C7D2DB6B029B9AE8D3 /* JSONHelpers.swift in Sources */,
 				9114B77427394BC35E7379C9 /* LRUCoordinateCache.swift in Sources */,
 				F3423B70525FB3B6BC33EEE6 /* MapGeometry.swift in Sources */,
+				511094AD4ACF9A1D21D482EA /* MapLocationController.swift in Sources */,
 				FDF93F15ED7F0C0EA8FF40C5 /* MapTabView.swift in Sources */,
 				925A5FC251E31A19E87503E9 /* MapTabViewModel.swift in Sources */,
 				9E8485E6ABCF8FD6496F6D1B /* MemoryPressureMonitor.swift in Sources */,
@@ -673,7 +679,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
-				DEVELOPMENT_TEAM = CZ3N26YJ75;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -692,7 +697,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
-				DEVELOPMENT_TEAM = CZ3N26YJ75;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
