@@ -116,10 +116,13 @@ struct InsightsTabView: View {
 
     private func hourlyChart(_ analytics: TripAnalyticsSnapshot) -> some View {
         chartCard(title: "Time of Day", icon: "clock") {
-            Chart(analytics.timeDistribution) { point in
+            let indexed = analytics.timeDistribution.enumerated().map { (idx, pt) in
+                (hour: idx, count: pt.count)
+            }
+            Chart(indexed, id: \.hour) { item in
                 AreaMark(
-                    x: .value("Hour", point.label),
-                    y: .value("Trips", point.count)
+                    x: .value("Hour", item.hour),
+                    y: .value("Trips", item.count)
                 )
                 .foregroundStyle(
                     LinearGradient(
@@ -131,8 +134,8 @@ struct InsightsTabView: View {
                 .interpolationMethod(.catmullRom)
 
                 LineMark(
-                    x: .value("Hour", point.label),
-                    y: .value("Trips", point.count)
+                    x: .value("Hour", item.hour),
+                    y: .value("Trips", item.count)
                 )
                 .foregroundStyle(AppTheme.accentWarm)
                 .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round))
@@ -152,16 +155,17 @@ struct InsightsTabView: View {
                 }
             }
             .chartXAxis {
-                AxisMarks(values: .automatic(desiredCount: 6)) { value in
+                AxisMarks(values: [0, 4, 8, 12, 16, 20]) { value in
                     AxisValueLabel {
-                        if let str = value.as(String.self) {
-                            Text(abbreviateHour(str))
-                                .font(.system(size: 10, weight: .medium, design: .rounded))
-                                .foregroundStyle(AppTheme.textTertiary)
+                        if let hour = value.as(Int.self) {
+                            Text(hourLabel(hour))
+                                .font(.system(size: 11, weight: .medium, design: .rounded))
+                                .foregroundStyle(AppTheme.textSecondary)
                         }
                     }
                 }
             }
+            .chartXScale(domain: 0...23)
             .chartPlotStyle { plot in
                 plot.padding(.top, 8)
             }
@@ -170,11 +174,26 @@ struct InsightsTabView: View {
     }
 
     private func dailyDistanceChart(_ analytics: TripAnalyticsSnapshot) -> some View {
-        chartCard(title: "Daily Distance", icon: "chart.bar.fill") {
-            Chart(analytics.dailyDistances.prefix(30)) { point in
+        let points = Array(analytics.dailyDistances.prefix(30))
+        let indexed = points.enumerated().map { (idx, pt) in
+            (index: idx, value: pt.value, label: pt.label)
+        }
+        let totalBars = indexed.count
+
+        // Pick ~5 evenly spaced tick indices
+        let tickIndices: [Int] = {
+            guard totalBars > 1 else { return [0] }
+            let count = min(5, totalBars)
+            return (0..<count).map { i in
+                i * (totalBars - 1) / (count - 1)
+            }
+        }()
+
+        return chartCard(title: "Daily Distance", icon: "chart.bar.fill") {
+            Chart(indexed, id: \.index) { item in
                 BarMark(
-                    x: .value("Date", point.label),
-                    y: .value("Miles", point.value)
+                    x: .value("Day", item.index),
+                    y: .value("Miles", item.value)
                 )
                 .foregroundStyle(
                     LinearGradient(
@@ -199,10 +218,10 @@ struct InsightsTabView: View {
                 }
             }
             .chartXAxis {
-                AxisMarks(values: .automatic(desiredCount: 5)) { value in
+                AxisMarks(values: tickIndices.map { $0 }) { value in
                     AxisValueLabel {
-                        if let str = value.as(String.self) {
-                            Text(abbreviateDate(str))
+                        if let idx = value.as(Int.self), idx < points.count {
+                            Text(abbreviateDate(points[idx].label))
                                 .font(.system(size: 10, weight: .medium, design: .rounded))
                                 .foregroundStyle(AppTheme.textTertiary)
                         }
