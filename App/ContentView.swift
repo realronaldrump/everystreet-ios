@@ -27,13 +27,6 @@ struct ContentView: View {
             }
 
             NavigationStack {
-                InsightsTabView(appModel: appModel, repository: container.dashboardRepository)
-            }
-            .tabItem {
-                Label("Insights", systemImage: "chart.xyaxis.line")
-            }
-
-            NavigationStack {
                 CoverageAreasTabView(repository: container.coverageRepository)
             }
             .tabItem {
@@ -41,7 +34,10 @@ struct ContentView: View {
             }
 
             NavigationStack {
-                SettingsView(appModel: appModel, tripsRepository: container.tripsRepository, settingsRepository: container.settingsRepository, placesRepository: container.placesRepository)
+                SettingsView(
+                    tripsRepository: container.tripsRepository,
+                    settingsRepository: container.settingsRepository
+                )
             }
             .tabItem {
                 Label("More", systemImage: "ellipsis")

@@ -1,4 +1,3 @@
-import CoreLocation
 import XCTest
 @testable import EveryStreetCompanion
 
@@ -33,46 +32,9 @@ final class CoverageAPIParserTests: XCTestCase {
         XCTAssertEqual(areas.count, 1)
         XCTAssertEqual(areas.first?.id, "area-1")
         XCTAssertEqual(areas.first?.displayName, "Waco, TX")
-        XCTAssertEqual(areas.first?.coveragePercentage, 64.5, accuracy: 0.001)
+        let coverage = try XCTUnwrap(areas.first?.coveragePercentage)
+        XCTAssertEqual(coverage, 64.5, accuracy: 0.001)
         XCTAssertEqual(areas.first?.undrivenSegments, 426)
-    }
-
-    func testParseStreetsLineString() throws {
-        let json = """
-        {
-          "success": true,
-          "total_in_viewport": 2,
-          "truncated": false,
-          "features": [
-            {
-              "type": "Feature",
-              "properties": {
-                "segment_id": "seg-1",
-                "status": "driven",
-                "name": "Main St"
-              },
-              "geometry": {
-                "type": "LineString",
-                "coordinates": [
-                  [-97.1467, 31.5493],
-                  [-97.1460, 31.5501]
-                ]
-              }
-            }
-          ]
-        }
-        """
-
-        let snapshot = try CoverageAPIParser.parseStreets(data: Data(json.utf8))
-        XCTAssertEqual(snapshot.totalInViewport, 2)
-        XCTAssertEqual(snapshot.segments.count, 1)
-        XCTAssertEqual(snapshot.segments.first?.id, "seg-1")
-        XCTAssertEqual(snapshot.segments.first?.status, .driven)
-        XCTAssertEqual(snapshot.segments.first?.coordinates.count, 2)
-
-        let first = try XCTUnwrap(snapshot.segments.first?.coordinates.first)
-        XCTAssertEqual(first.latitude, 31.5493, accuracy: 0.0001)
-        XCTAssertEqual(first.longitude, -97.1467, accuracy: 0.0001)
     }
 
     func testParseAreaDetailBoundingBoxLonLatOrder() throws {
@@ -110,5 +72,43 @@ final class CoverageAPIParserTests: XCTestCase {
         XCTAssertEqual(box.minLat, 30.1, accuracy: 0.001)
         XCTAssertEqual(box.maxLon, -97.5, accuracy: 0.001)
         XCTAssertEqual(box.maxLat, 30.6, accuracy: 0.001)
+    }
+
+    func testParseCoverageMapBundle() throws {
+        let json = """
+        {
+          "revision": "cov-rev-1",
+          "generated_at": "2026-03-04T12:00:00Z",
+          "area": {
+            "id": "area-1",
+            "display_name": "Waco, TX",
+            "coverage_percentage": 64.5,
+            "total_segments": 1200,
+            "driven_segments": 774
+          },
+          "bbox": [-98.0, 30.0, -97.0, 31.0],
+          "segment_count": 1,
+          "segments": [
+            {
+              "id": "seg-1",
+              "status": "driven",
+              "name": "Main St",
+              "bbox": [-97.2, 31.5, -97.1, 31.6],
+              "geom": {
+                "full": "gvrd{@vsjhxD_q@wj@",
+                "medium": "gvrd{@vsjhxD_q@wj@",
+                "low": "gvrd{@vsjhxD_q@wj@"
+              }
+            }
+          ]
+        }
+        """
+
+        let bundle = try CoverageAPIParser.parseCoverageMapBundle(data: Data(json.utf8))
+        XCTAssertEqual(bundle.revision, "cov-rev-1")
+        XCTAssertEqual(bundle.area.displayName, "Waco, TX")
+        XCTAssertEqual(bundle.segmentCount, 1)
+        XCTAssertEqual(bundle.segments.first?.id, "seg-1")
+        XCTAssertEqual(bundle.segments.first?.status, .driven)
     }
 }

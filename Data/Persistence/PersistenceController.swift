@@ -6,8 +6,7 @@ enum PersistenceController {
         let schema = Schema([
             CachedTripRecord.self,
             CachedVehicleRecord.self,
-            CachedWindowRecord.self,
-            CachedDashboardSnapshot.self
+            CachedWindowRecord.self
         ])
 
         let configuration: ModelConfiguration

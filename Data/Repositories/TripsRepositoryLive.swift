@@ -5,6 +5,7 @@ import SwiftData
 final class TripsRepositoryLive: TripsRepository {
     private let container: ModelContainer
     private let dateFormatter: DateFormatter
+    private let mapBundleCache = MapBundleCacheStore()
 
     init(container: ModelContainer) {
         self.container = container
@@ -42,6 +43,44 @@ final class TripsRepositoryLive: TripsRepository {
             try await client.get(path: "api/trips/\(id)")
         }
         return try TripAPIParser.parseTripDetail(data: data)
+    }
+
+    func loadTripMapBundle(query: TripQuery) async throws -> TripMapBundle {
+        let client = makeClient()
+        var queryItems = [
+            URLQueryItem(name: "start_date", value: dateFormatter.string(from: query.dateRange.start)),
+            URLQueryItem(name: "end_date", value: dateFormatter.string(from: query.dateRange.end))
+        ]
+
+        if let imei = query.imei, !imei.isEmpty {
+            queryItems.append(URLQueryItem(name: "imei", value: imei))
+        }
+
+        let cacheKey = "trip-map-bundle|\(query.cacheKey)"
+        let cached = mapBundleCache.load(key: cacheKey)
+        var headers: [String: String] = [:]
+        if let cached {
+            headers["If-None-Match"] = cached.etag
+        }
+
+        let payload = try await TaskRetry.run {
+            try await client.get(
+                path: "api/map/trips/bundle",
+                query: queryItems,
+                headers: headers,
+                allowNotModified: true
+            )
+        }
+
+        if payload.statusCode == 304, let cached {
+            return try TripAPIParser.parseTripMapBundle(data: cached.payload)
+        }
+
+        let data = payload.data
+        if let etag = payload.headerValue("ETag"), !etag.isEmpty {
+            mapBundleCache.store(key: cacheKey, payload: data, etag: etag)
+        }
+        return try TripAPIParser.parseTripMapBundle(data: data)
     }
 
     func prefetch(range: DateInterval) async {
@@ -85,7 +124,7 @@ final class TripsRepositoryLive: TripsRepository {
         let data = try await TaskRetry.run {
             try await client.get(path: "api/vehicles", query: [URLQueryItem(name: "active_only", value: "true")])
         }
-        let vehicles = try PlacesAPIParser.parseVehicles(data: data)
+        let vehicles = try AppAPIParser.parseVehicles(data: data)
         try store(vehicles: vehicles)
         return vehicles
     }
@@ -95,7 +134,7 @@ final class TripsRepositoryLive: TripsRepository {
         let data = try await TaskRetry.run {
             try await client.get(path: "api/first_trip_date")
         }
-        return try PlacesAPIParser.parseFirstTripDate(data: data)
+        return try AppAPIParser.parseFirstTripDate(data: data)
     }
 
     func lastSyncDate(for query: TripQuery) async -> Date? {
@@ -155,9 +194,6 @@ final class TripsRepositoryLive: TripsRepository {
             context.delete(item)
         }
         for item in try context.fetch(FetchDescriptor<CachedWindowRecord>()) {
-            context.delete(item)
-        }
-        for item in try context.fetch(FetchDescriptor<CachedDashboardSnapshot>()) {
             context.delete(item)
         }
         try context.save()

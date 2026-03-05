@@ -1,8 +1,91 @@
 import MapKit
 import SwiftUI
-#if canImport(UIKit)
-import UIKit
-#endif
+
+struct OverlayMKMapView: UIViewRepresentable {
+    let region: MKCoordinateRegion
+    let regionRevision: Int
+    let overlayGroups: [OverlayRenderGroup]
+    let onRegionChange: (MKCoordinateRegion) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onRegionChange: onRegionChange)
+    }
+
+    func makeUIView(context: Context) -> MKMapView {
+        let mapView = MKMapView(frame: .zero)
+        mapView.delegate = context.coordinator
+        mapView.showsCompass = false
+        mapView.pointOfInterestFilter = .excludingAll
+
+        if #available(iOS 17.0, *) {
+            let config = MKStandardMapConfiguration(elevationStyle: .flat, emphasisStyle: .muted)
+            config.showsTraffic = false
+            mapView.preferredConfiguration = config
+        } else {
+            mapView.mapType = .mutedStandard
+        }
+
+        mapView.setRegion(region, animated: false)
+        context.coordinator.apply(groups: overlayGroups, to: mapView)
+        return mapView
+    }
+
+    func updateUIView(_ uiView: MKMapView, context: Context) {
+        context.coordinator.apply(groups: overlayGroups, to: uiView)
+        context.coordinator.apply(region: region, revision: regionRevision, to: uiView)
+    }
+
+    final class Coordinator: NSObject, MKMapViewDelegate {
+        private let onRegionChange: (MKCoordinateRegion) -> Void
+        private var styleByOverlayID: [ObjectIdentifier: OverlayLineStyle] = [:]
+        private var lastRegionRevision = -1
+        private var suppressRegionCallback = false
+
+        init(onRegionChange: @escaping (MKCoordinateRegion) -> Void) {
+            self.onRegionChange = onRegionChange
+        }
+
+        func apply(groups: [OverlayRenderGroup], to mapView: MKMapView) {
+            if !mapView.overlays.isEmpty {
+                mapView.removeOverlays(mapView.overlays)
+            }
+
+            styleByOverlayID.removeAll(keepingCapacity: true)
+            for group in groups {
+                let id = ObjectIdentifier(group.overlay)
+                styleByOverlayID[id] = group.style
+                mapView.addOverlay(group.overlay)
+            }
+        }
+
+        func apply(region: MKCoordinateRegion, revision: Int, to mapView: MKMapView) {
+            guard revision != lastRegionRevision else { return }
+            lastRegionRevision = revision
+            suppressRegionCallback = true
+            mapView.setRegion(region, animated: false)
+            suppressRegionCallback = false
+        }
+
+        func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            if let multi = overlay as? MKMultiPolyline {
+                let renderer = MKMultiPolylineRenderer(multiPolyline: multi)
+                if let style = styleByOverlayID[ObjectIdentifier(multi)] {
+                    renderer.strokeColor = style.color.withAlphaComponent(style.alpha)
+                    renderer.lineWidth = style.lineWidth
+                    renderer.lineCap = .round
+                    renderer.lineJoin = .round
+                }
+                return renderer
+            }
+            return MKOverlayRenderer(overlay: overlay)
+        }
+
+        func mapView(_ mapView: MKMapView, regionDidChangeAnimated _: Bool) {
+            guard !suppressRegionCallback else { return }
+            onRegionChange(mapView.region)
+        }
+    }
+}
 
 struct MapTabView: View {
     @Bindable var appModel: AppModel
@@ -31,65 +114,14 @@ struct MapTabView: View {
 
     var body: some View {
         ZStack {
-            // MARK: - Map
-            Map(position: $viewModel.cameraPosition, interactionModes: .all) {
-                if viewModel.selectedLayer == .trips {
-                    if viewModel.zoomBucket != .low {
-                        ForEach(viewModel.renderedTrips, id: \.transactionId) { trip in
-                            if routeCoordinates(for: trip).count > 1 {
-                                MapPolyline(coordinates: routeCoordinates(for: trip))
-                                    .stroke(
-                                        routeColor(for: trip).opacity(selectedOpacity(for: trip)),
-                                        style: StrokeStyle(
-                                            lineWidth: selectedLineWidth(for: trip),
-                                            lineCap: .round,
-                                            lineJoin: .round
-                                        )
-                                    )
-                            }
-                        }
-                    }
-
-                    ForEach(Array(viewModel.densityPoints.enumerated()), id: \.offset) { _, point in
-                        Annotation("", coordinate: point.coordinate) {
-                            Circle()
-                                .fill(AppTheme.routeRecent.opacity(0.18 + min(Double(point.weight) / 18.0, 0.55)))
-                                .frame(
-                                    width: 8 + CGFloat(min(point.weight, 18)),
-                                    height: 8 + CGFloat(min(point.weight, 18))
-                                )
-                        }
-                    }
-                } else {
-                    ForEach(viewModel.renderedCoverageSegments) { segment in
-                        if segment.coordinates.count > 1 {
-                            MapPolyline(coordinates: segment.coordinates)
-                                .stroke(
-                                    streetColor(for: segment.status).opacity(streetOpacity(for: segment.status)),
-                                    style: StrokeStyle(
-                                        lineWidth: streetLineWidth(for: segment.status),
-                                        lineCap: .round,
-                                        lineJoin: .round
-                                    )
-                                )
-                        }
-                    }
-                }
-            }
-            .mapStyle(
-                .standard(
-                    elevation: .flat,
-                    emphasis: .muted,
-                    pointsOfInterest: .excludingAll,
-                    showsTraffic: false
-                )
+            OverlayMKMapView(
+                region: viewModel.cameraRegion,
+                regionRevision: viewModel.cameraRevision,
+                overlayGroups: viewModel.activeOverlayGroups,
+                onRegionChange: { viewModel.update(region: $0) }
             )
-            .onMapCameraChange(frequency: .onEnd) { context in
-                viewModel.update(region: context.region)
-            }
             .ignoresSafeArea()
 
-            // MARK: - Loading spinner
             if viewModel.isCurrentLayerLoading {
                 ProgressView()
                     .controlSize(.regular)
@@ -98,7 +130,6 @@ struct MapTabView: View {
                     .background(.ultraThinMaterial, in: Circle())
             }
 
-            // MARK: - Top controls
             VStack(spacing: 0) {
                 topBar
                     .padding(.horizontal, AppTheme.spacingLG)
@@ -113,7 +144,6 @@ struct MapTabView: View {
                 Spacer()
             }
 
-            // MARK: - Bottom tray
             VStack(spacing: 0) {
                 Spacer()
 
@@ -124,8 +154,6 @@ struct MapTabView: View {
                         coverageBottomTray
                     }
                 }
-                .padding(.horizontal, 0)
-                .padding(.bottom, 0)
             }
         }
         .toolbar(.hidden, for: .navigationBar)
@@ -139,11 +167,8 @@ struct MapTabView: View {
         }
     }
 
-    // MARK: - Compact Top Bar
-
     private var topBar: some View {
         HStack(spacing: AppTheme.spacingSM) {
-            // Layer picker — compact segmented control
             Picker(
                 "Layer",
                 selection: Binding(
@@ -164,10 +189,8 @@ struct MapTabView: View {
 
             Spacer()
 
-            // Sync indicator dot (only when syncing/stale/error)
             syncIndicator
 
-            // Filter button
             Button {
                 showFilterSheet = true
             } label: {
@@ -188,7 +211,6 @@ struct MapTabView: View {
             }
             .buttonStyle(.pressable)
 
-            // Refresh button
             Button {
                 Task {
                     await viewModel.refreshCurrentLayer(query: appModel.activeQuery, appModel: appModel)
@@ -222,8 +244,6 @@ struct MapTabView: View {
         )
     }
 
-    // MARK: - Sync Indicator (replaces full SyncStatusBanner)
-
     @ViewBuilder
     private var syncIndicator: some View {
         switch appModel.syncState {
@@ -251,8 +271,6 @@ struct MapTabView: View {
         }
     }
 
-    // MARK: - Filter Sheet
-
     private var filterSheet: some View {
         NavigationStack {
             ZStack {
@@ -260,14 +278,14 @@ struct MapTabView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: AppTheme.spacingXL) {
-                        // Date & Vehicle filters (shared)
-                        GlobalFilterBar(appModel: appModel, compact: false) {
-                            Task {
-                                await viewModel.load(query: appModel.activeQuery, appModel: appModel)
+                        if viewModel.selectedLayer == .trips {
+                            GlobalFilterBar(appModel: appModel, compact: false) {
+                                Task {
+                                    await viewModel.load(query: appModel.activeQuery, appModel: appModel)
+                                }
                             }
                         }
 
-                        // Coverage-specific controls
                         if viewModel.selectedLayer == .coverage {
                             coverageFilterControls
                         }
@@ -359,11 +377,8 @@ struct MapTabView: View {
         .glassCard(padding: AppTheme.spacingLG, cornerRadius: AppTheme.radiusLG)
     }
 
-    // MARK: - Bottom Trays
-
     private var tripsBottomTray: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Tappable header to collapse/expand
             Button {
                 withAnimation(.easeInOut(duration: 0.25)) {
                     showBottomTray.toggle()
@@ -395,13 +410,6 @@ struct MapTabView: View {
 
             if showBottomTray {
                 VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
-                    if viewModel.isTripRenderingCapped {
-                        Text("Map is rendering \(viewModel.renderedTrips.count) routes for smoother performance.")
-                            .font(.caption2)
-                            .foregroundStyle(AppTheme.warning)
-                            .padding(.horizontal, AppTheme.spacingMD)
-                    }
-
                     if viewModel.visibleTrips.isEmpty {
                         Text("Move the map to see trips")
                             .font(.caption)
@@ -414,7 +422,7 @@ struct MapTabView: View {
                             HStack(spacing: AppTheme.spacingSM) {
                                 ForEach(viewModel.visibleTrips.prefix(20)) { trip in
                                     NavigationLink {
-                                        TripDetailView(tripID: trip.transactionId, repository: repository)
+                                        TripDetailView(tripID: trip.id, repository: repository)
                                     } label: {
                                         tripCard(trip)
                                     }
@@ -440,7 +448,6 @@ struct MapTabView: View {
 
     private var coverageBottomTray: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Tappable header
             Button {
                 withAnimation(.easeInOut(duration: 0.25)) {
                     showBottomTray.toggle()
@@ -480,17 +487,9 @@ struct MapTabView: View {
                             metricChip(title: "Undriven", value: "\(viewModel.coverageCounts.undriven)", color: streetColor(for: .undriven))
                         }
 
-                        if viewModel.isCoverageRenderingCapped {
-                            Text("Map is rendering \(viewModel.renderedCoverageSegments.count) streets for smoother performance.")
-                                .font(.caption2)
-                                .foregroundStyle(AppTheme.warning)
-                        }
-
-                        if viewModel.coverageTruncated {
-                            Text("Zoom in for complete coverage")
-                                .font(.caption2)
-                                .foregroundStyle(AppTheme.warning)
-                        }
+                        Text("Viewport: \(viewModel.coverageTotalInViewport) segments")
+                            .font(.caption2.weight(.medium).monospacedDigit())
+                            .foregroundStyle(AppTheme.textTertiary)
                     } else {
                         Text("Open filters to choose a coverage area")
                             .font(.caption)
@@ -511,15 +510,13 @@ struct MapTabView: View {
         )
     }
 
-    // MARK: - Components
-
-    private func tripCard(_ trip: TripSummary) -> some View {
+    private func tripCard(_ trip: TripMapFeature) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.spacingXS) {
             Text(trip.startTime, style: .date)
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(AppTheme.textTertiary)
 
-            Text(distanceLabel(trip.distance))
+            Text(distanceLabel(trip.distanceMiles))
                 .font(.subheadline.weight(.bold).monospacedDigit())
                 .foregroundStyle(AppTheme.textPrimary)
 
@@ -590,52 +587,13 @@ struct MapTabView: View {
         )
     }
 
-    // MARK: - Helpers
-
     private var hasActiveFilters: Bool {
-        appModel.selectedIMEI != nil || appModel.selectedPreset != .sevenDays
-    }
-
-    private var geometryLevel: GeometryDetailLevel {
-        switch viewModel.zoomBucket {
-        case .low: .low
-        case .mid: .medium
-        case .high: .full
+        switch viewModel.selectedLayer {
+        case .trips:
+            return appModel.selectedIMEI != nil || appModel.selectedPreset != .sevenDays
+        case .coverage:
+            return viewModel.coverageFilter != .all
         }
-    }
-
-    private func routeCoordinates(for trip: TripSummary) -> [CLLocationCoordinate2D] {
-        viewModel.coordinates(for: trip, level: geometryLevel)
-    }
-
-    private func routeColor(for trip: TripSummary) -> Color {
-        let start = appModel.activeDateRange.start.timeIntervalSince1970
-        let end = appModel.activeDateRange.end.timeIntervalSince1970
-        let value = trip.startTime.timeIntervalSince1970
-
-        guard end > start else { return AppTheme.routeRecent }
-
-        let progress = (value - start) / (end - start)
-        let clamped = max(0, min(1, progress))
-        let old = (red: 0.22, green: 0.38, blue: 0.60)
-        let recent = (red: 0.30, green: 0.85, blue: 1.0)
-
-        return Color(
-            red: old.red + (recent.red - old.red) * clamped,
-            green: old.green + (recent.green - old.green) * clamped,
-            blue: old.blue + (recent.blue - old.blue) * clamped
-        )
-    }
-
-    private func selectedLineWidth(for trip: TripSummary) -> CGFloat {
-        trip.transactionId == viewModel.selectedTrip?.transactionId ? 3.5 : 2.2
-    }
-
-    private func selectedOpacity(for trip: TripSummary) -> CGFloat {
-        if let selected = viewModel.selectedTrip {
-            return selected.transactionId == trip.transactionId ? 1 : 0.45
-        }
-        return 0.85
     }
 
     private func streetColor(for status: CoverageStreetStatus) -> Color {
@@ -651,44 +609,18 @@ struct MapTabView: View {
         }
     }
 
-    private func streetLineWidth(for status: CoverageStreetStatus) -> CGFloat {
-        switch status {
-        case .driven: 3.0
-        case .undriven: 2.4
-        case .undriveable: 1.8
-        case .unknown: 2.0
-        }
-    }
-
-    private func streetOpacity(for status: CoverageStreetStatus) -> CGFloat {
-        switch status {
-        case .driven, .undriven: 0.9
-        case .undriveable: 0.55
-        case .unknown: 0.65
-        }
-    }
-
     private func distanceLabel(_ distance: Double?) -> String {
         guard let distance else { return "-- mi" }
         return String(format: "%.1f mi", distance)
     }
 
-    private var selectedVehicleLabel: String {
-        if let imei = appModel.selectedIMEI,
-           let vehicle = appModel.vehicles.first(where: { $0.imei == imei })
-        {
-            return vehicle.displayName
-        }
-        return "All Vehicles"
-    }
-
-    private func destinationLabel(for trip: TripSummary) -> String {
+    private func destinationLabel(for trip: TripMapFeature) -> String {
         if let destination = trip.destination, !destination.isEmpty {
             return destination
         }
         if let startLocation = trip.startLocation, !startLocation.isEmpty {
             return startLocation
         }
-        return "Trip \(trip.transactionId.prefix(8))"
+        return "Trip \(trip.id.prefix(8))"
     }
 }

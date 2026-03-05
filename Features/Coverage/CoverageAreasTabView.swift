@@ -370,28 +370,13 @@ private struct CoverageAreaMapPanel: View {
             .pickerStyle(.segmented)
 
             ZStack {
-                Map(position: $viewModel.cameraPosition, interactionModes: .all) {
-                    ForEach(viewModel.renderedSegments) { segment in
-                        if segment.coordinates.count > 1 {
-                            MapPolyline(coordinates: segment.coordinates)
-                                .stroke(
-                                    streetColor(for: segment.status).opacity(streetOpacity(for: segment.status)),
-                                    style: StrokeStyle(
-                                        lineWidth: streetWidth(for: segment.status),
-                                        lineCap: .round,
-                                        lineJoin: .round
-                                    )
-                                )
-                        }
+                OverlayMKMapView(
+                    region: viewModel.cameraRegion,
+                    regionRevision: viewModel.cameraRevision,
+                    overlayGroups: viewModel.activeOverlayGroups,
+                    onRegionChange: { region in
+                        viewModel.update(region: region)
                     }
-                }
-                .mapStyle(
-                    .standard(
-                        elevation: .flat,
-                        emphasis: .muted,
-                        pointsOfInterest: .excludingAll,
-                        showsTraffic: false
-                    )
                 )
                 .frame(height: 240)
                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous))
@@ -399,9 +384,6 @@ private struct CoverageAreaMapPanel: View {
                     RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
                         .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
                 )
-                .onMapCameraChange(frequency: .onEnd) { context in
-                    viewModel.update(region: context.region)
-                }
 
                 if viewModel.isLoading {
                     ProgressView()
@@ -420,18 +402,6 @@ private struct CoverageAreaMapPanel: View {
             Text("Viewport: \(viewModel.totalInViewport) segments")
                 .font(.caption2.weight(.medium).monospacedDigit())
                 .foregroundStyle(AppTheme.textTertiary)
-
-            if viewModel.isRenderingCapped {
-                Text("Map is rendering \(viewModel.renderedSegments.count) streets for smoother performance.")
-                    .font(.caption2)
-                    .foregroundStyle(AppTheme.warning)
-            }
-
-            if viewModel.truncated {
-                Text("Viewport results are capped. Zoom in for complete local detail.")
-                    .font(.caption2)
-                    .foregroundStyle(AppTheme.warning)
-            }
 
             if let error = viewModel.errorMessage {
                 HStack(spacing: AppTheme.spacingXS) {

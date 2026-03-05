@@ -37,4 +37,15 @@ final class GeometrySimplifierTests: XCTestCase {
         XCTAssertEqual(bbox.minLat, 31.1, accuracy: 0.0001)
         XCTAssertEqual(bbox.maxLon, -97.1, accuracy: 0.0001)
     }
+
+    func testDecodePolyline6() {
+        let encoded = "gvrd{@vsjhxD_q@wj@"
+        let coords = Polyline6.decode(encoded)
+
+        XCTAssertEqual(coords.count, 2)
+        XCTAssertEqual(coords[0].latitude, 31.5493, accuracy: 0.000001)
+        XCTAssertEqual(coords[0].longitude, -97.1467, accuracy: 0.000001)
+        XCTAssertEqual(coords[1].latitude, 31.5501, accuracy: 0.000001)
+        XCTAssertEqual(coords[1].longitude, -97.1460, accuracy: 0.000001)
+    }
 }

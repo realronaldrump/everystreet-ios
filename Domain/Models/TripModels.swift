@@ -70,10 +70,75 @@ struct TripBoundingBox: Codable, Hashable {
     }
 }
 
+struct MapBoundingBox: Hashable, Codable {
+    let minLon: Double
+    let minLat: Double
+    let maxLon: Double
+    let maxLat: Double
+
+    init(minLon: Double, minLat: Double, maxLon: Double, maxLat: Double) {
+        self.minLon = minLon
+        self.minLat = minLat
+        self.maxLon = maxLon
+        self.maxLat = maxLat
+    }
+
+    init?(array: [Double]) {
+        guard array.count >= 4 else { return nil }
+        self.init(minLon: array[0], minLat: array[1], maxLon: array[2], maxLat: array[3])
+    }
+
+    var asTripBoundingBox: TripBoundingBox {
+        TripBoundingBox(minLat: minLat, maxLat: maxLat, minLon: minLon, maxLon: maxLon)
+    }
+
+    var asArray: [Double] {
+        [minLon, minLat, maxLon, maxLat]
+    }
+}
+
 enum GeometryDetailLevel: String, Codable, CaseIterable {
     case full
     case medium
     case low
+}
+
+struct EncodedGeometryLOD: Hashable, Codable {
+    let full: String
+    let medium: String
+    let low: String
+
+    func encodedPath(for level: GeometryDetailLevel) -> String {
+        switch level {
+        case .full:
+            return full
+        case .medium:
+            return medium.isEmpty ? full : medium
+        case .low:
+            if !low.isEmpty { return low }
+            return medium.isEmpty ? full : medium
+        }
+    }
+}
+
+struct TripMapFeature: Identifiable, Hashable {
+    let id: String
+    let startTime: Date
+    let endTime: Date?
+    let imei: String
+    let distanceMiles: Double?
+    let startLocation: String?
+    let destination: String?
+    let bbox: MapBoundingBox
+    let geom: EncodedGeometryLOD
+}
+
+struct TripMapBundle: Hashable {
+    let revision: String
+    let generatedAt: Date
+    let bbox: MapBoundingBox
+    let tripCount: Int
+    let trips: [TripMapFeature]
 }
 
 struct TripSummary: Identifiable {

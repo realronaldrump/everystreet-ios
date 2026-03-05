@@ -1,4 +1,3 @@
-import CoreLocation
 import Foundation
 
 enum CoverageAPIParser {
@@ -38,18 +37,39 @@ enum CoverageAPIParser {
         )
     }
 
-    static func parseStreets(data: Data) throws -> CoverageStreetsSnapshot {
+    static func parseCoverageMapBundle(data: Data) throws -> CoverageMapBundle {
         guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw APIError.decodingFailed(context: "coverage-streets")
+            throw APIError.decodingFailed(context: "coverage-map-bundle")
         }
 
-        let features = root["features"] as? [[String: Any]] ?? []
-        let segments = features.compactMap(parseStreetFeature)
+        let revision = root.string("revision") ?? ""
+        let generatedAt = root.date("generated_at") ?? .now
 
-        return CoverageStreetsSnapshot(
-            segments: segments,
-            totalInViewport: root.int("total_in_viewport") ?? segments.count,
-            truncated: root.bool("truncated") ?? false
+        guard let areaObject = root["area"] as? [String: Any],
+              let area = parseCoverageMapAreaSummary(areaObject)
+        else {
+            throw APIError.decodingFailed(context: "coverage-map-bundle-area")
+        }
+
+        guard let bboxRaw = root["bbox"] as? [Any] else {
+            throw APIError.decodingFailed(context: "coverage-map-bundle-bbox")
+        }
+
+        let bboxValues = bboxRaw.compactMap(JSONHelpers.double(from:))
+        guard let bbox = MapBoundingBox(array: bboxValues) else {
+            throw APIError.decodingFailed(context: "coverage-map-bundle-bbox-values")
+        }
+
+        let segments = (root["segments"] as? [[String: Any]] ?? []).compactMap(parseCoverageMapFeature)
+        let segmentCount = root.int("segment_count") ?? segments.count
+
+        return CoverageMapBundle(
+            revision: revision,
+            generatedAt: generatedAt,
+            area: area,
+            bbox: bbox,
+            segmentCount: segmentCount,
+            segments: segments
         )
     }
 
@@ -73,73 +93,6 @@ enum CoverageAPIParser {
             lastSynced: parseDate(raw["last_synced"]),
             hasOptimalRoute: raw.bool("has_optimal_route") ?? false
         )
-    }
-
-    private static func parseStreetFeature(_ raw: [String: Any]) -> CoverageStreetSegment? {
-        guard let properties = raw["properties"] as? [String: Any] else { return nil }
-        guard let geometry = raw["geometry"] as? [String: Any] else { return nil }
-
-        let coordinates = parseStreetCoordinates(geometry)
-        guard coordinates.count > 1 else { return nil }
-
-        let status = CoverageStreetStatus(apiValue: properties.string("status") ?? properties.string("coverage_status"))
-        let segmentID = properties.string("segment_id")
-            ?? properties.string("segmentId")
-            ?? properties.string("id")
-            ?? fallbackSegmentID(from: coordinates, status: status)
-
-        return CoverageStreetSegment(
-            id: segmentID,
-            status: status,
-            name: properties.string("name") ?? properties.string("street_name"),
-            coordinates: coordinates
-        )
-    }
-
-    private static func parseStreetCoordinates(_ geometry: [String: Any]) -> [CLLocationCoordinate2D] {
-        guard let coordinateArray = geometry["coordinates"] as? [Any] else {
-            return []
-        }
-
-        let type = geometry.string("type")?.lowercased()
-        if type == "multilinestring" {
-            return parseMultiLineString(coordinateArray)
-        }
-
-        if let line = parseLineString(coordinateArray), !line.isEmpty {
-            return line
-        }
-
-        return parseMultiLineString(coordinateArray)
-    }
-
-    private static func parseLineString(_ raw: [Any]) -> [CLLocationCoordinate2D]? {
-        var coordinates: [CLLocationCoordinate2D] = []
-        coordinates.reserveCapacity(raw.count)
-
-        for item in raw {
-            guard let pair = item as? [Any], pair.count >= 2 else { return nil }
-            guard let lon = JSONHelpers.double(from: pair[0]),
-                  let lat = JSONHelpers.double(from: pair[1])
-            else {
-                return nil
-            }
-            coordinates.append(CLLocationCoordinate2D(latitude: lat, longitude: lon))
-        }
-
-        return coordinates
-    }
-
-    private static func parseMultiLineString(_ raw: [Any]) -> [CLLocationCoordinate2D] {
-        var flattened: [CLLocationCoordinate2D] = []
-
-        for item in raw {
-            guard let line = item as? [Any] else { continue }
-            guard let parsedLine = parseLineString(line) else { continue }
-            flattened.append(contentsOf: parsedLine)
-        }
-
-        return flattened
     }
 
     private static func parseBoundingBox(_ raw: Any?) -> TripBoundingBox? {
@@ -181,18 +134,41 @@ enum CoverageAPIParser {
         return formatter.date(from: value)
     }
 
-    private static func fallbackSegmentID(from coordinates: [CLLocationCoordinate2D], status: CoverageStreetStatus) -> String {
-        guard let first = coordinates.first, let last = coordinates.last else {
-            return UUID().uuidString
-        }
+    private static func parseCoverageMapAreaSummary(_ raw: [String: Any]) -> CoverageMapAreaSummary? {
+        guard let id = raw.string("id"), let displayName = raw.string("display_name") else { return nil }
+        return CoverageMapAreaSummary(
+            id: id,
+            displayName: displayName,
+            coveragePercentage: raw.double("coverage_percentage") ?? 0,
+            totalSegments: raw.int("total_segments") ?? 0,
+            drivenSegments: raw.int("driven_segments") ?? 0
+        )
+    }
 
-        return String(
-            format: "%@-%.5f-%.5f-%.5f-%.5f",
-            status.rawValue,
-            first.latitude,
-            first.longitude,
-            last.latitude,
-            last.longitude
+    private static func parseCoverageMapFeature(_ raw: [String: Any]) -> CoverageMapFeature? {
+        guard let id = raw.string("id") else { return nil }
+        let status = CoverageStreetStatus(apiValue: raw.string("status"))
+
+        guard let bboxRaw = raw["bbox"] as? [Any] else { return nil }
+        let bboxValues = bboxRaw.compactMap(JSONHelpers.double(from:))
+        guard let bbox = MapBoundingBox(array: bboxValues) else { return nil }
+
+        guard let geomObject = raw["geom"] as? [String: Any] else { return nil }
+        let full = geomObject.string("full") ?? ""
+        guard !full.isEmpty else { return nil }
+
+        let geom = EncodedGeometryLOD(
+            full: full,
+            medium: geomObject.string("medium") ?? full,
+            low: geomObject.string("low") ?? geomObject.string("medium") ?? full
+        )
+
+        return CoverageMapFeature(
+            id: id,
+            status: status,
+            name: raw.string("name"),
+            bbox: bbox,
+            geom: geom
         )
     }
 }

@@ -1,4 +1,3 @@
-import CoreLocation
 import Foundation
 
 enum CoverageStreetStatus: String, CaseIterable, Identifiable {
@@ -27,6 +26,7 @@ enum CoverageStreetFilter: String, CaseIterable, Identifiable {
     case all
     case driven
     case undriven
+    case undriveable
 
     var id: String { rawValue }
 
@@ -35,6 +35,7 @@ enum CoverageStreetFilter: String, CaseIterable, Identifiable {
         case .all: "All"
         case .driven: "Driven"
         case .undriven: "Undriven"
+        case .undriveable: "Undriveable"
         }
     }
 
@@ -46,6 +47,8 @@ enum CoverageStreetFilter: String, CaseIterable, Identifiable {
             status == .driven
         case .undriven:
             status == .undriven
+        case .undriveable:
+            status == .undriveable
         }
     }
 }
@@ -81,15 +84,38 @@ struct CoverageAreaDetail {
     let hasOptimalRoute: Bool
 }
 
-struct CoverageStreetSegment: Identifiable {
+enum CoverageMapStatusFilter: String, CaseIterable, Identifiable {
+    case all
+    case driven
+    case undriven
+    case undriveable
+
+    var id: String { rawValue }
+
+    var apiValue: String { rawValue }
+}
+
+struct CoverageMapAreaSummary: Hashable {
+    let id: String
+    let displayName: String
+    let coveragePercentage: Double
+    let totalSegments: Int
+    let drivenSegments: Int
+}
+
+struct CoverageMapFeature: Identifiable, Hashable {
     let id: String
     let status: CoverageStreetStatus
     let name: String?
-    let coordinates: [CLLocationCoordinate2D]
+    let bbox: MapBoundingBox
+    let geom: EncodedGeometryLOD
 }
 
-struct CoverageStreetsSnapshot {
-    let segments: [CoverageStreetSegment]
-    let totalInViewport: Int
-    let truncated: Bool
+struct CoverageMapBundle: Hashable {
+    let revision: String
+    let generatedAt: Date
+    let area: CoverageMapAreaSummary
+    let bbox: MapBoundingBox
+    let segmentCount: Int
+    let segments: [CoverageMapFeature]
 }

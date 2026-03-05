@@ -139,24 +139,3 @@ final class CachedWindowRecord {
         self.lastSyncedAt = lastSyncedAt
     }
 }
-
-@Model
-final class CachedDashboardSnapshot {
-    @Attribute(.unique) var key: String
-    var endpoint: String
-    var startDate: Date
-    var endDate: Date
-    var imei: String?
-    @Attribute(.externalStorage) var payloadData: Data
-    var updatedAt: Date
-
-    init(key: String, endpoint: String, startDate: Date, endDate: Date, imei: String?, payloadData: Data, updatedAt: Date) {
-        self.key = key
-        self.endpoint = endpoint
-        self.startDate = startDate
-        self.endDate = endDate
-        self.imei = imei
-        self.payloadData = payloadData
-        self.updatedAt = updatedAt
-    }
-}

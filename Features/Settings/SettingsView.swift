@@ -1,14 +1,10 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @Bindable var appModel: AppModel
     @State private var viewModel: SettingsViewModel
-    private let placesRepository: PlacesRepository
 
-    init(appModel: AppModel, tripsRepository: TripsRepository, settingsRepository: SettingsRepository, placesRepository: PlacesRepository) {
-        _appModel = Bindable(appModel)
+    init(tripsRepository: TripsRepository, settingsRepository: SettingsRepository) {
         _viewModel = State(initialValue: SettingsViewModel(tripsRepository: tripsRepository, settingsRepository: settingsRepository))
-        self.placesRepository = placesRepository
     }
 
     var body: some View {
@@ -17,9 +13,6 @@ struct SettingsView: View {
 
             ScrollView {
                 VStack(spacing: AppTheme.spacingLG) {
-                    // Quick links
-                    quickLinksSection
-
                     apiSection
                     cacheSection
                     healthSection
@@ -38,40 +31,6 @@ struct SettingsView: View {
                 await viewModel.load()
             }
         }
-    }
-
-    // MARK: - Quick Links (Places moved here)
-
-    private var quickLinksSection: some View {
-        VStack(alignment: .leading, spacing: AppTheme.spacingMD) {
-            NavigationLink {
-                PlacesTabView(appModel: appModel, repository: placesRepository)
-            } label: {
-                HStack(spacing: AppTheme.spacingMD) {
-                    Image(systemName: "mappin.circle.fill")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(AppTheme.accentWarm)
-                        .frame(width: 32, height: 32)
-                        .background(AppTheme.accentWarmMuted, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Places")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(AppTheme.textPrimary)
-                        Text("Frequent destinations & visit history")
-                            .font(.caption)
-                            .foregroundStyle(AppTheme.textTertiary)
-                    }
-
-                    Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(AppTheme.textTertiary)
-                }
-            }
-        }
-        .glassCard()
     }
 
     // MARK: - API Section

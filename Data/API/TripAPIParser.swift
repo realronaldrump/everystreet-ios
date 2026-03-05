@@ -138,6 +138,34 @@ enum TripAPIParser {
         )
     }
 
+    static func parseTripMapBundle(data: Data) throws -> TripMapBundle {
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw APIError.decodingFailed(context: "trip-map-bundle-root")
+        }
+
+        let revision = root.string("revision") ?? ""
+        let generatedAt = root.date("generated_at") ?? .now
+        guard let bboxArray = root["bbox"] as? [Any] else {
+            throw APIError.decodingFailed(context: "trip-map-bundle-bbox")
+        }
+
+        let bboxValues = bboxArray.compactMap(JSONHelpers.double(from:))
+        guard let bbox = MapBoundingBox(array: bboxValues) else {
+            throw APIError.decodingFailed(context: "trip-map-bundle-bbox-values")
+        }
+
+        let features = (root["trips"] as? [[String: Any]] ?? []).compactMap(parseTripMapFeature)
+        let tripCount = root.int("trip_count") ?? features.count
+
+        return TripMapBundle(
+            revision: revision,
+            generatedAt: generatedAt,
+            bbox: bbox,
+            tripCount: tripCount,
+            trips: features
+        )
+    }
+
     private static func parsePoint(from any: Any?) -> CLLocationCoordinate2D? {
         guard let object = any as? [String: Any] else { return nil }
         guard let coordinates = object["coordinates"] as? [Any] else { return nil }
@@ -166,5 +194,37 @@ enum TripAPIParser {
             return dict.string("formatted_address") ?? dict.string("formattedAddress")
         }
         return nil
+    }
+
+    private static func parseTripMapFeature(_ raw: [String: Any]) -> TripMapFeature? {
+        guard let id = raw.string("id") else { return nil }
+        guard let startTime = raw.date("start_time") else { return nil }
+        guard let imei = raw.string("imei") else { return nil }
+
+        guard let bboxRaw = raw["bbox"] as? [Any] else { return nil }
+        let bboxValues = bboxRaw.compactMap(JSONHelpers.double(from:))
+        guard let bbox = MapBoundingBox(array: bboxValues) else { return nil }
+
+        guard let geomObject = raw["geom"] as? [String: Any] else { return nil }
+        let full = geomObject.string("full") ?? ""
+        guard !full.isEmpty else { return nil }
+
+        let geometry = EncodedGeometryLOD(
+            full: full,
+            medium: geomObject.string("medium") ?? full,
+            low: geomObject.string("low") ?? geomObject.string("medium") ?? full
+        )
+
+        return TripMapFeature(
+            id: id,
+            startTime: startTime,
+            endTime: raw.date("end_time"),
+            imei: imei,
+            distanceMiles: raw.double("distance_miles"),
+            startLocation: raw.string("start_location"),
+            destination: raw.string("destination"),
+            bbox: bbox,
+            geom: geometry
+        )
     }
 }

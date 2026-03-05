@@ -1,6 +1,7 @@
 import MapKit
 import Observation
 import SwiftUI
+import UIKit
 
 enum MapLayerMode: String, CaseIterable, Identifiable {
     case trips
@@ -23,41 +24,48 @@ enum MapLayerMode: String, CaseIterable, Identifiable {
     }
 }
 
+struct OverlayLineStyle: Hashable {
+    let color: UIColor
+    let lineWidth: CGFloat
+    let alpha: CGFloat
+}
+
+enum OverlaySemantic: Hashable {
+    case trip(bucket: Int)
+    case coverage(status: CoverageStreetStatus)
+}
+
+struct OverlayRenderGroup: Identifiable {
+    let id: String
+    let overlay: MKMultiPolyline
+    let style: OverlayLineStyle
+    let semantic: OverlaySemantic
+}
+
 @MainActor
 @Observable
 final class MapTabViewModel {
-    private struct RenderBudget {
-        let maxItems: Int
-        let maxPoints: Int
-    }
-
     private let repository: TripsRepository
     private let coverageRepository: CoverageRepository
     private let coordinateCache: LRUCoordinateCache
 
-    private var coverageFetchTask: Task<Void, Never>?
-    private var coverageRequestToken = UUID()
     private var areaBoundingBoxes: [String: TripBoundingBox] = [:]
+    private var tripOverlayGroupsByLevel: [GeometryDetailLevel: [OverlayRenderGroup]] = [:]
+    private var coverageOverlayGroupsByLevel: [GeometryDetailLevel: [OverlayRenderGroup]] = [:]
 
-    var allTrips: [TripSummary] = []
-    var visibleTrips: [TripSummary] = []
-    var renderedTrips: [TripSummary] = []
-    var selectedTrip: TripSummary?
+    var allTrips: [TripMapFeature] = []
+    var visibleTrips: [TripMapFeature] = []
 
     var selectedLayer: MapLayerMode = .trips
     var coverageAreas: [CoverageArea] = []
     var selectedCoverageAreaID: String?
     var coverageFilter: CoverageStreetFilter = .all
-    var coverageSegments: [CoverageStreetSegment] = []
-    var renderedCoverageSegments: [CoverageStreetSegment] = []
+    var coverageFeatures: [CoverageMapFeature] = []
     var coverageTotalInViewport = 0
-    var coverageTruncated = false
 
-    var cameraPosition: MapCameraPosition = .region(
-        MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: 31.5493, longitude: -97.1467),
-            span: MKCoordinateSpan(latitudeDelta: 0.4, longitudeDelta: 0.4)
-        )
+    var cameraRegion = MKCoordinateRegion(
+        center: CLLocationCoordinate2D(latitude: 31.5493, longitude: -97.1467),
+        span: MKCoordinateSpan(latitudeDelta: 0.4, longitudeDelta: 0.4)
     )
 
     var currentRegion = MKCoordinateRegion(
@@ -65,8 +73,8 @@ final class MapTabViewModel {
         span: MKCoordinateSpan(latitudeDelta: 0.4, longitudeDelta: 0.4)
     )
 
+    var cameraRevision = 0
     var zoomBucket: ZoomBucket = .mid
-    var densityPoints: [(coordinate: CLLocationCoordinate2D, weight: Int)] = []
 
     var isLoading = false
     var errorMessage: String?
@@ -79,21 +87,17 @@ final class MapTabViewModel {
         return coverageAreas.first(where: { $0.id == selectedCoverageAreaID })
     }
 
-    var visibleCoverageSegments: [CoverageStreetSegment] {
-        coverageSegments.filter { coverageFilter.matches($0.status) }
-    }
-
-    var isTripRenderingCapped: Bool {
-        zoomBucket != .low && renderedTrips.count < visibleTrips.count
-    }
-
-    var isCoverageRenderingCapped: Bool {
-        renderedCoverageSegments.count < visibleCoverageSegments.count
+    var visibleCoverageSegments: [CoverageMapFeature] {
+        let visibleBox = MapGeometry.boundingBox(for: currentRegion).expanded(by: 0.10)
+        return coverageFeatures.filter { feature in
+            coverageFilter.matches(feature.status)
+                && feature.bbox.asTripBoundingBox.intersects(visibleBox)
+        }
     }
 
     var coverageCounts: (driven: Int, undriven: Int, undriveable: Int) {
-        coverageSegments.reduce(into: (driven: 0, undriven: 0, undriveable: 0)) { result, segment in
-            switch segment.status {
+        coverageFeatures.reduce(into: (driven: 0, undriven: 0, undriveable: 0)) { result, feature in
+            switch feature.status {
             case .driven:
                 result.driven += 1
             case .undriven:
@@ -114,6 +118,26 @@ final class MapTabViewModel {
         selectedLayer == .trips ? errorMessage : coverageErrorMessage
     }
 
+    var activeOverlayGroups: [OverlayRenderGroup] {
+        let level = Self.geometryLevel(for: zoomBucket)
+        switch selectedLayer {
+        case .trips:
+            return tripOverlayGroupsByLevel[level] ?? []
+        case .coverage:
+            let groups = coverageOverlayGroupsByLevel[level] ?? []
+            switch coverageFilter {
+            case .all:
+                return groups
+            case .driven:
+                return groups.filter { $0.semantic == OverlaySemantic.coverage(status: .driven) }
+            case .undriven:
+                return groups.filter { $0.semantic == OverlaySemantic.coverage(status: .undriven) }
+            case .undriveable:
+                return groups.filter { $0.semantic == OverlaySemantic.coverage(status: .undriveable) }
+            }
+        }
+    }
+
     init(repository: TripsRepository, coverageRepository: CoverageRepository, coordinateCache: LRUCoordinateCache) {
         self.repository = repository
         self.coverageRepository = coverageRepository
@@ -126,9 +150,11 @@ final class MapTabViewModel {
         appModel.markSyncStarted()
 
         do {
-            let trips = try await repository.loadTrips(query: query)
-            allTrips = trips
+            let bundle = try await repository.loadTripMapBundle(query: query)
+            allTrips = bundle.trips.sorted { $0.startTime > $1.startTime }
             updateVisibleTrips()
+            await rebuildTripOverlays(query: query)
+
             let lastSync = await repository.lastSyncDate(for: query)
             appModel.lastUpdated = lastSync
             appModel.markSyncFinished(at: lastSync ?? .now)
@@ -144,8 +170,8 @@ final class MapTabViewModel {
         isLoading = false
         await loadCoverageAreasIfNeeded()
 
-        if selectedLayer == .coverage {
-            scheduleCoverageStreetFetch(force: true)
+        if selectedLayer == .coverage, let areaID = selectedCoverageAreaID {
+            await loadCoverageBundle(areaID: areaID)
         }
     }
 
@@ -157,11 +183,11 @@ final class MapTabViewModel {
         switch selectedLayer {
         case .trips:
             appModel.markSyncStarted()
-
             do {
-                let trips = try await repository.refresh(query: query)
-                allTrips = trips
+                let bundle = try await repository.loadTripMapBundle(query: query)
+                allTrips = bundle.trips.sorted { $0.startTime > $1.startTime }
                 updateVisibleTrips()
+                await rebuildTripOverlays(query: query)
                 appModel.markSyncFinished()
             } catch {
                 appModel.markSyncFailure(error.localizedDescription)
@@ -178,56 +204,38 @@ final class MapTabViewModel {
 
         switch layer {
         case .trips:
-            coverageFetchTask?.cancel()
-            isCoverageLoading = false
-            updateRenderedTrips()
+            break
         case .coverage:
             await loadCoverageAreasIfNeeded()
             if let areaID = selectedCoverageAreaID {
                 await loadCoverageAreaDetailIfNeeded(areaID: areaID, focusCamera: true)
+                await loadCoverageBundle(areaID: areaID)
             }
-            updateRenderedCoverageSegments()
-            scheduleCoverageStreetFetch(force: true)
         }
     }
 
     func selectCoverageArea(_ areaID: String) async {
         guard selectedCoverageAreaID != areaID else { return }
         selectedCoverageAreaID = areaID
-        coverageSegments = []
-        renderedCoverageSegments = []
+        coverageFeatures = []
+        coverageOverlayGroupsByLevel = [:]
         coverageTotalInViewport = 0
-        coverageTruncated = false
 
         await loadCoverageAreaDetailIfNeeded(areaID: areaID, focusCamera: true)
-        scheduleCoverageStreetFetch(force: true)
+        await loadCoverageBundle(areaID: areaID)
     }
 
     func setCoverageFilter(_ filter: CoverageStreetFilter) {
         coverageFilter = filter
-        updateRenderedCoverageSegments()
+        updateCoverageViewportCount()
     }
 
     func update(region: MKCoordinateRegion) {
         currentRegion = region
+        cameraRegion = region
         zoomBucket = MapGeometry.zoomBucket(for: region)
         updateVisibleTrips()
-        updateRenderedCoverageSegments()
-
-        if selectedLayer == .coverage {
-            scheduleCoverageStreetFetch()
-        }
-    }
-
-    func coordinates(for trip: TripSummary, level: GeometryDetailLevel) -> [CLLocationCoordinate2D] {
-        let key = "\(trip.transactionId)-\(level.rawValue)"
-        if let cached = coordinateCache.value(for: key) {
-            return cached
-        }
-
-        let coords = trip.geometry(for: level)
-        coordinateCache.set(coords, for: key)
-        return coords
+        updateCoverageViewportCount()
     }
 
     private func loadCoverageAreasIfNeeded() async {
@@ -236,7 +244,9 @@ final class MapTabViewModel {
 
     private func refreshCoverageLayer() async {
         await loadCoverageAreas(force: true)
-        scheduleCoverageStreetFetch(force: true)
+        if let areaID = selectedCoverageAreaID {
+            await loadCoverageBundle(areaID: areaID)
+        }
     }
 
     private func loadCoverageAreas(force: Bool) async {
@@ -291,45 +301,18 @@ final class MapTabViewModel {
         }
     }
 
-    private func scheduleCoverageStreetFetch(force: Bool = false) {
-        guard selectedLayer == .coverage,
-              let areaID = selectedCoverageAreaID
-        else {
-            return
-        }
-
-        let region = currentRegion
-        coverageFetchTask?.cancel()
-        coverageFetchTask = Task { [weak self] in
-            guard let self else { return }
-            if !force {
-                try? await Task.sleep(nanoseconds: 220_000_000)
-            }
-            await self.fetchCoverageStreets(areaID: areaID, region: region)
-        }
-    }
-
-    private func fetchCoverageStreets(areaID: String, region: MKCoordinateRegion) async {
-        let requestToken = UUID()
-        coverageRequestToken = requestToken
+    private func loadCoverageBundle(areaID: String) async {
         isCoverageLoading = true
-
-        let viewport = MapGeometry.boundingBox(for: region).expanded(by: 0.08)
+        defer { isCoverageLoading = false }
 
         do {
-            let snapshot = try await coverageRepository.loadStreets(areaID: areaID, boundingBox: viewport)
-            guard !Task.isCancelled, requestToken == coverageRequestToken else { return }
-
-            coverageSegments = snapshot.segments
-            coverageTotalInViewport = snapshot.totalInViewport
-            coverageTruncated = snapshot.truncated
-            updateRenderedCoverageSegments()
+            let bundle = try await coverageRepository.loadCoverageMapBundle(areaID: areaID, status: .all)
+            coverageFeatures = bundle.segments
+            await rebuildCoverageOverlays()
+            updateCoverageViewportCount()
             coverageErrorMessage = nil
-            isCoverageLoading = false
         } catch {
-            guard !Task.isCancelled, requestToken == coverageRequestToken else { return }
             coverageErrorMessage = error.localizedDescription
-            isCoverageLoading = false
         }
     }
 
@@ -348,100 +331,136 @@ final class MapTabViewModel {
         )
 
         currentRegion = region
-        cameraPosition = .region(region)
+        cameraRegion = region
+        cameraRevision += 1
     }
 
     private func updateVisibleTrips() {
         let visibleBox = MapGeometry.boundingBox(for: currentRegion).expanded(by: 0.20)
-
-        let visible = allTrips.filter { trip in
-            guard let bbox = trip.boundingBox else { return false }
-            return bbox.intersects(visibleBox)
+        visibleTrips = allTrips.filter { trip in
+            trip.bbox.asTripBoundingBox.intersects(visibleBox)
         }
-
-        let limit: Int
-        switch zoomBucket {
-        case .low: limit = 400
-        case .mid: limit = 1_200
-        case .high: limit = 2_000
-        }
-
-        visibleTrips = Array(visible.prefix(limit))
-
-        if zoomBucket == .low {
-            densityPoints = MapGeometry.densityPoints(
-                from: visible,
-                in: visibleBox,
-                cellSizeDegrees: 0.05
-            )
-            .prefix(240)
-            .map { $0 }
-        } else {
-            densityPoints = []
-        }
-
-        updateRenderedTrips()
     }
 
-    private func updateRenderedTrips() {
-        guard zoomBucket != .low else {
-            renderedTrips = []
-            return
+    private func updateCoverageViewportCount() {
+        let visibleBox = MapGeometry.boundingBox(for: currentRegion).expanded(by: 0.10)
+        coverageTotalInViewport = coverageFeatures.reduce(into: 0) { total, feature in
+            guard feature.bbox.asTripBoundingBox.intersects(visibleBox) else { return }
+            total += 1
         }
+    }
 
-        let level = geometryLevel(for: zoomBucket)
-        let budget = tripRenderBudget(for: zoomBucket)
-        var rendered: [TripSummary] = []
-        rendered.reserveCapacity(min(visibleTrips.count, budget.maxItems))
-        var consumedPoints = 0
+    private func rebuildTripOverlays(query: TripQuery) async {
+        tripOverlayGroupsByLevel = Self.buildTripOverlayGroups(
+            features: allTrips,
+            queryRange: query.dateRange,
+            coordinateCache: coordinateCache
+        )
+    }
 
-        for trip in visibleTrips {
-            guard rendered.count < budget.maxItems else { break }
+    private func rebuildCoverageOverlays() async {
+        coverageOverlayGroupsByLevel = Self.buildCoverageOverlayGroups(
+            features: coverageFeatures,
+            coordinateCache: coordinateCache
+        )
+    }
 
-            let pointCount = coordinateCount(for: trip, level: level)
-            guard pointCount > 1 else { continue }
+    private static func buildTripOverlayGroups(
+        features: [TripMapFeature],
+        queryRange: DateInterval,
+        coordinateCache: LRUCoordinateCache
+    ) -> [GeometryDetailLevel: [OverlayRenderGroup]] {
+        var byLevel: [GeometryDetailLevel: [OverlayRenderGroup]] = [:]
 
-            if consumedPoints + pointCount > budget.maxPoints {
-                if rendered.isEmpty {
-                    rendered.append(trip)
+        for level in GeometryDetailLevel.allCases {
+            var buckets: [Int: [MKPolyline]] = [:]
+            for feature in features {
+                let cacheKey = "trip-\(feature.id)-\(level.rawValue)"
+                let coordinates: [CLLocationCoordinate2D]
+                if let cached = coordinateCache.value(for: cacheKey) {
+                    coordinates = cached
+                } else {
+                    let decoded = Polyline6.decode(feature.geom.encodedPath(for: level))
+                    coordinateCache.set(decoded, for: cacheKey)
+                    coordinates = decoded
                 }
-                break
+
+                guard coordinates.count > 1 else { continue }
+                let bucket = timeBucket(for: feature.startTime, in: queryRange)
+                let polyline = MKPolyline(coordinates: coordinates, count: coordinates.count)
+                buckets[bucket, default: []].append(polyline)
             }
 
-            rendered.append(trip)
-            consumedPoints += pointCount
-        }
-
-        renderedTrips = rendered
-    }
-
-    private func updateRenderedCoverageSegments() {
-        let candidates = visibleCoverageSegments
-        let budget = coverageRenderBudget(for: zoomBucket)
-        var rendered: [CoverageStreetSegment] = []
-        rendered.reserveCapacity(min(candidates.count, budget.maxItems))
-        var consumedPoints = 0
-
-        for segment in candidates {
-            guard rendered.count < budget.maxItems else { break }
-            let pointCount = segment.coordinates.count
-            guard pointCount > 1 else { continue }
-
-            if consumedPoints + pointCount > budget.maxPoints {
-                if rendered.isEmpty {
-                    rendered.append(segment)
-                }
-                break
+            var groups: [OverlayRenderGroup] = []
+            for bucket in 0 ..< 8 {
+                guard let polylines = buckets[bucket], !polylines.isEmpty else { continue }
+                let overlay = MKMultiPolyline(polylines)
+                let uiColor = tripBucketColor(bucket: bucket)
+                let style = OverlayLineStyle(color: uiColor, lineWidth: 2.2, alpha: 0.85)
+                groups.append(
+                    OverlayRenderGroup(
+                        id: "trip-\(level.rawValue)-\(bucket)",
+                        overlay: overlay,
+                        style: style,
+                        semantic: .trip(bucket: bucket)
+                    )
+                )
             }
 
-            rendered.append(segment)
-            consumedPoints += pointCount
+            byLevel[level] = groups
         }
 
-        renderedCoverageSegments = rendered
+        return byLevel
     }
 
-    private func geometryLevel(for zoomBucket: ZoomBucket) -> GeometryDetailLevel {
+    private static func buildCoverageOverlayGroups(
+        features: [CoverageMapFeature],
+        coordinateCache: LRUCoordinateCache
+    ) -> [GeometryDetailLevel: [OverlayRenderGroup]] {
+        var byLevel: [GeometryDetailLevel: [OverlayRenderGroup]] = [:]
+        let statuses: [CoverageStreetStatus] = [.driven, .undriven, .undriveable, .unknown]
+
+        for level in GeometryDetailLevel.allCases {
+            var bucketed: [CoverageStreetStatus: [MKPolyline]] = [:]
+
+            for feature in features {
+                let cacheKey = "coverage-\(feature.id)-\(level.rawValue)"
+                let coordinates: [CLLocationCoordinate2D]
+                if let cached = coordinateCache.value(for: cacheKey) {
+                    coordinates = cached
+                } else {
+                    let decoded = Polyline6.decode(feature.geom.encodedPath(for: level))
+                    coordinateCache.set(decoded, for: cacheKey)
+                    coordinates = decoded
+                }
+
+                guard coordinates.count > 1 else { continue }
+                let polyline = MKPolyline(coordinates: coordinates, count: coordinates.count)
+                bucketed[feature.status, default: []].append(polyline)
+            }
+
+            var groups: [OverlayRenderGroup] = []
+            for status in statuses {
+                guard let polylines = bucketed[status], !polylines.isEmpty else { continue }
+                let overlay = MKMultiPolyline(polylines)
+                let style = coverageStyle(for: status)
+                groups.append(
+                    OverlayRenderGroup(
+                        id: "coverage-\(level.rawValue)-\(status.rawValue)",
+                        overlay: overlay,
+                        style: style,
+                        semantic: .coverage(status: status)
+                    )
+                )
+            }
+
+            byLevel[level] = groups
+        }
+
+        return byLevel
+    }
+
+    private static func geometryLevel(for zoomBucket: ZoomBucket) -> GeometryDetailLevel {
         switch zoomBucket {
         case .low: .low
         case .mid: .medium
@@ -449,38 +468,55 @@ final class MapTabViewModel {
         }
     }
 
-    private func coordinateCount(for trip: TripSummary, level: GeometryDetailLevel) -> Int {
-        switch level {
-        case .full:
-            return trip.fullGeometry.count
-        case .medium:
-            return trip.mediumGeometry.isEmpty ? trip.fullGeometry.count : trip.mediumGeometry.count
-        case .low:
-            if !trip.lowGeometry.isEmpty { return trip.lowGeometry.count }
-            if !trip.mediumGeometry.isEmpty { return trip.mediumGeometry.count }
-            return trip.fullGeometry.count
-        }
+    private static func timeBucket(for timestamp: Date, in range: DateInterval) -> Int {
+        let start = range.start.timeIntervalSince1970
+        let end = range.end.timeIntervalSince1970
+        guard end > start else { return 7 }
+
+        let raw = (timestamp.timeIntervalSince1970 - start) / (end - start)
+        let clamped = max(0, min(1, raw))
+        return min(7, max(0, Int(clamped * 7.999)))
     }
 
-    private func tripRenderBudget(for zoomBucket: ZoomBucket) -> RenderBudget {
-        switch zoomBucket {
-        case .low:
-            return RenderBudget(maxItems: 0, maxPoints: 0)
-        case .mid:
-            return RenderBudget(maxItems: 260, maxPoints: 28_000)
-        case .high:
-            return RenderBudget(maxItems: 180, maxPoints: 24_000)
-        }
+    private static func tripBucketColor(bucket: Int) -> UIColor {
+        let t = max(0, min(1, Double(bucket) / 7.0))
+        let old = (red: 0.22, green: 0.38, blue: 0.60)
+        let recent = (red: 0.30, green: 0.85, blue: 1.0)
+
+        return UIColor(
+            red: old.red + (recent.red - old.red) * t,
+            green: old.green + (recent.green - old.green) * t,
+            blue: old.blue + (recent.blue - old.blue) * t,
+            alpha: 1
+        )
     }
 
-    private func coverageRenderBudget(for zoomBucket: ZoomBucket) -> RenderBudget {
-        switch zoomBucket {
-        case .low:
-            return RenderBudget(maxItems: 900, maxPoints: 18_000)
-        case .mid:
-            return RenderBudget(maxItems: 1_200, maxPoints: 24_000)
-        case .high:
-            return RenderBudget(maxItems: 1_500, maxPoints: 30_000)
+    private static func coverageStyle(for status: CoverageStreetStatus) -> OverlayLineStyle {
+        switch status {
+        case .driven:
+            OverlayLineStyle(
+                color: UIColor(red: 0.26, green: 0.79, blue: 0.52, alpha: 1),
+                lineWidth: 3.0,
+                alpha: 0.9
+            )
+        case .undriven:
+            OverlayLineStyle(
+                color: UIColor(red: 0.96, green: 0.64, blue: 0.20, alpha: 1),
+                lineWidth: 2.4,
+                alpha: 0.9
+            )
+        case .undriveable:
+            OverlayLineStyle(
+                color: UIColor(white: 0.64, alpha: 1),
+                lineWidth: 1.8,
+                alpha: 0.55
+            )
+        case .unknown:
+            OverlayLineStyle(
+                color: UIColor(red: 0.30, green: 0.85, blue: 1.0, alpha: 1),
+                lineWidth: 2.0,
+                alpha: 0.65
+            )
         }
     }
 }
