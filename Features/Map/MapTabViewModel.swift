@@ -92,6 +92,7 @@ final class MapTabViewModel {
     var selectedCoverageAreaID: String?
     var coverageFilter: CoverageStreetFilter = .all
     var coverageFeatures: [CoverageMapFeature] = []
+    var locallyDrivenSegmentIDs: Set<String> = []
     var coverageTotalInViewport = 0
 
     var cameraRegion = MKCoordinateRegion(
@@ -125,14 +126,14 @@ final class MapTabViewModel {
     var visibleCoverageSegments: [CoverageMapFeature] {
         let visibleBox = MapGeometry.boundingBox(for: currentRegion).expanded(by: 0.10)
         return coverageFeatures.filter { feature in
-            coverageFilter.matches(feature.status)
+            coverageFilter.matches(effectiveCoverageStatus(for: feature))
                 && feature.bbox.asTripBoundingBox.intersects(visibleBox)
         }
     }
 
     var coverageCounts: (driven: Int, undriven: Int, undriveable: Int) {
         coverageFeatures.reduce(into: (driven: 0, undriven: 0, undriveable: 0)) { result, feature in
-            switch feature.status {
+            switch effectiveCoverageStatus(for: feature) {
             case .driven:
                 result.driven += 1
             case .undriven:
@@ -288,6 +289,7 @@ final class MapTabViewModel {
         guard selectedCoverageAreaID != areaID else { return }
         selectedCoverageAreaID = areaID
         settings.selectedCoverageAreaID = areaID
+        loadLocallyDrivenSegments(for: areaID)
         coverageFeatures = []
         coverageOverlayGroupsByLevel = [:]
         coverageTotalInViewport = 0
@@ -338,7 +340,7 @@ final class MapTabViewModel {
         let visibleBox = MapGeometry.boundingBox(for: currentRegion).expanded(by: 0.10)
 
         return coverageFeatures.compactMap { feature in
-            guard feature.status == .undriven else { return nil }
+            guard effectiveCoverageStatus(for: feature) == .undriven else { return nil }
             guard feature.bbox.asTripBoundingBox.intersects(visibleBox) else { return nil }
 
             let cacheKey = "coverage-selectable-\(feature.id)"
@@ -361,6 +363,78 @@ final class MapTabViewModel {
                 coordinates: coordinates
             )
         }
+    }
+
+    func nearestUndrivenSegment(to coordinate: CLLocationCoordinate2D) -> MapSelectableCoverageSegment? {
+        coverageFeatures.compactMap { feature -> (segment: MapSelectableCoverageSegment, distance: Double)? in
+            guard effectiveCoverageStatus(for: feature) == .undriven else { return nil }
+
+            let cacheKey = "coverage-selectable-\(feature.id)"
+            let coordinates: [CLLocationCoordinate2D]
+            if let cached = coordinateCache.value(for: cacheKey) {
+                coordinates = cached
+            } else {
+                let decoded = Polyline6.decode(feature.geom.full)
+                coordinateCache.set(decoded, for: cacheKey)
+                coordinates = decoded
+            }
+
+            guard coordinates.count > 1 else { return nil }
+            guard let midpoint = Self.midpoint(for: coordinates) else { return nil }
+
+            let segment = MapSelectableCoverageSegment(
+                id: feature.id,
+                name: feature.name,
+                midpoint: midpoint,
+                coordinates: coordinates
+            )
+
+            let distance = MapGeometry.distance(from: coordinate, toPolyline: coordinates)
+            return (segment, distance)
+        }
+        .min(by: { $0.distance < $1.distance })?
+        .segment
+    }
+
+    func recordLocallyDrivenSegments(
+        trackedPathSegments: [[CLLocationCoordinate2D]],
+        isTripRecording: Bool
+    ) async -> Bool {
+        guard isTripRecording else { return false }
+        guard let areaID = selectedCoverageAreaID, !coverageFeatures.isEmpty else { return false }
+
+        let recentCoordinates = recentTrackedCoordinates(from: trackedPathSegments, maxPoints: 16)
+        guard recentCoordinates.count > 1 else { return false }
+        guard let searchBox = recentSearchBoundingBox(for: recentCoordinates) else { return false }
+
+        var updatedIDs = locallyDrivenSegmentIDs
+        var inserted = false
+
+        for feature in coverageFeatures {
+            guard feature.status == .undriven else { continue }
+            guard !updatedIDs.contains(feature.id) else { continue }
+            guard feature.bbox.asTripBoundingBox.intersects(searchBox) else { continue }
+
+            let coordinates = decodedCoverageCoordinates(for: feature.id, encoded: feature.geom.full)
+            guard coordinates.count > 1 else { continue }
+
+            let isDriven = recentCoordinates.contains { coordinate in
+                MapGeometry.distance(from: coordinate, toPolyline: coordinates) <= 18
+            }
+
+            if isDriven {
+                updatedIDs.insert(feature.id)
+                inserted = true
+            }
+        }
+
+        guard inserted else { return false }
+
+        locallyDrivenSegmentIDs = updatedIDs
+        settings.setLocallyDrivenSegmentIDs(updatedIDs, for: areaID)
+        await rebuildCoverageOverlays()
+        updateCoverageViewportCount()
+        return true
     }
 
     private var activeTripCoverageAreaID: String? {
@@ -458,6 +532,8 @@ final class MapTabViewModel {
                 settings.selectedCoverageAreaID = selectedCoverageAreaID
             }
 
+            loadLocallyDrivenSegments(for: selectedCoverageAreaID)
+
             if let selectedCoverageAreaID {
                 await loadCoverageAreaDetailIfNeeded(areaID: selectedCoverageAreaID, focusCamera: false)
             }
@@ -498,6 +574,7 @@ final class MapTabViewModel {
         do {
             let bundle = try await coverageRepository.loadCoverageMapBundle(areaID: areaID, status: .all)
             coverageFeatures = bundle.segments
+            pruneLocallyDrivenSegments(using: bundle.segments, areaID: areaID)
             await rebuildCoverageOverlays()
             updateCoverageViewportCount()
             coverageErrorMessage = nil
@@ -555,7 +632,8 @@ final class MapTabViewModel {
     private func rebuildCoverageOverlays() async {
         coverageOverlayGroupsByLevel = Self.buildCoverageOverlayGroups(
             features: coverageFeatures,
-            coordinateCache: coordinateCache
+            coordinateCache: coordinateCache,
+            locallyDrivenSegmentIDs: locallyDrivenSegmentIDs
         )
     }
 
@@ -660,7 +738,8 @@ final class MapTabViewModel {
 
     private static func buildCoverageOverlayGroups(
         features: [CoverageMapFeature],
-        coordinateCache: LRUCoordinateCache
+        coordinateCache: LRUCoordinateCache,
+        locallyDrivenSegmentIDs: Set<String>
     ) -> [GeometryDetailLevel: [OverlayRenderGroup]] {
         var byLevel: [GeometryDetailLevel: [OverlayRenderGroup]] = [:]
         let statuses: [CoverageStreetStatus] = [.driven, .undriven, .undriveable, .unknown]
@@ -681,7 +760,10 @@ final class MapTabViewModel {
 
                 guard coordinates.count > 1 else { continue }
                 let polyline = MKPolyline(coordinates: coordinates, count: coordinates.count)
-                bucketed[feature.status, default: []].append(polyline)
+                let effectiveStatus = locallyDrivenSegmentIDs.contains(feature.id) && feature.status == .undriven
+                    ? CoverageStreetStatus.driven
+                    : feature.status
+                bucketed[effectiveStatus, default: []].append(polyline)
             }
 
             var groups: [OverlayRenderGroup] = []
@@ -798,6 +880,78 @@ final class MapTabViewModel {
 
         return coordinates[middleIndex]
     }
+
+    private func effectiveCoverageStatus(for feature: CoverageMapFeature) -> CoverageStreetStatus {
+        if locallyDrivenSegmentIDs.contains(feature.id), feature.status == .undriven {
+            return .driven
+        }
+        return feature.status
+    }
+
+    private func decodedCoverageCoordinates(
+        for featureID: String,
+        encoded: String
+    ) -> [CLLocationCoordinate2D] {
+        let cacheKey = "coverage-selectable-\(featureID)"
+        if let cached = coordinateCache.value(for: cacheKey) {
+            return cached
+        }
+
+        let decoded = Polyline6.decode(encoded)
+        coordinateCache.set(decoded, for: cacheKey)
+        return decoded
+    }
+
+    private func loadLocallyDrivenSegments(for areaID: String?) {
+        locallyDrivenSegmentIDs = settings.locallyDrivenSegmentIDs(for: areaID)
+    }
+
+    private func pruneLocallyDrivenSegments(using features: [CoverageMapFeature], areaID: String) {
+        let validIDs = Set(features.map(\.id))
+        let pruned = locallyDrivenSegmentIDs.filter(validIDs.contains)
+        if pruned != locallyDrivenSegmentIDs {
+            locallyDrivenSegmentIDs = pruned
+            settings.setLocallyDrivenSegmentIDs(pruned, for: areaID)
+        }
+    }
+
+    private func recentTrackedCoordinates(
+        from trackedPathSegments: [[CLLocationCoordinate2D]],
+        maxPoints: Int
+    ) -> [CLLocationCoordinate2D] {
+        guard maxPoints > 0 else { return [] }
+
+        var collected: [CLLocationCoordinate2D] = []
+        collected.reserveCapacity(maxPoints)
+
+        for segment in trackedPathSegments.reversed() {
+            for coordinate in segment.reversed() {
+                collected.append(coordinate)
+                if collected.count == maxPoints {
+                    return Array(collected.reversed())
+                }
+            }
+        }
+
+        return Array(collected.reversed())
+    }
+
+    private func recentSearchBoundingBox(
+        for coordinates: [CLLocationCoordinate2D]
+    ) -> TripBoundingBox? {
+        guard let baseBox = TripBoundingBox(coordinates: coordinates) else { return nil }
+
+        let centerLatitude = (baseBox.minLat + baseBox.maxLat) / 2
+        let latitudePadding = 40 / 111_000
+        let longitudePadding = 40 / max(cos(centerLatitude * .pi / 180) * 111_000, 1)
+
+        return TripBoundingBox(
+            minLat: baseBox.minLat - latitudePadding,
+            maxLat: baseBox.maxLat + latitudePadding,
+            minLon: baseBox.minLon - longitudePadding,
+            maxLon: baseBox.maxLon + longitudePadding
+        )
+    }
 }
 
 protocol MapsLaunching {
@@ -844,6 +998,8 @@ final class CoverageNavigationController {
 
     private var currentAreaID: String?
     private var lastFetchedOrigin: CLLocation?
+    private var rawSuggestionSet: CoverageNavigationSuggestionSet?
+    private var excludedSegmentIDs: Set<String> = []
 
     var suggestionSet: CoverageNavigationSuggestionSet?
     var activeTargetID: String?
@@ -908,6 +1064,7 @@ final class CoverageNavigationController {
     }
 
     func clearSession(resetArea: Bool = false) {
+        rawSuggestionSet = nil
         suggestionSet = nil
         activeTargetID = nil
         progress = nil
@@ -916,6 +1073,15 @@ final class CoverageNavigationController {
 
         if resetArea {
             currentAreaID = nil
+        }
+    }
+
+    func setExcludedSegmentIDs(_ ids: Set<String>) {
+        guard excludedSegmentIDs != ids else { return }
+        excludedSegmentIDs = ids
+
+        if let rawSuggestionSet {
+            applySuggestions(rawSuggestionSet, preserveActiveSelection: true)
         }
     }
 
@@ -936,6 +1102,7 @@ final class CoverageNavigationController {
                 origin: origin,
                 limit: shortlistLimit
             )
+            rawSuggestionSet = suggestionSet
             applySuggestions(suggestionSet, preserveActiveSelection: preserveActiveSelection)
             lastFetchedOrigin = CLLocation(latitude: origin.latitude, longitude: origin.longitude)
         } catch {
@@ -1052,9 +1219,10 @@ final class CoverageNavigationController {
         _ suggestionSet: CoverageNavigationSuggestionSet,
         preserveActiveSelection: Bool
     ) {
-        self.suggestionSet = suggestionSet
+        let filteredSuggestionSet = filteredSuggestionSet(from: suggestionSet)
+        self.suggestionSet = filteredSuggestionSet
 
-        guard !suggestionSet.suggestions.isEmpty else {
+        guard !filteredSuggestionSet.suggestions.isEmpty else {
             activeTargetID = nil
             progress = nil
             errorMessage = "No undriven clusters found near your current position."
@@ -1065,11 +1233,55 @@ final class CoverageNavigationController {
 
         if preserveActiveSelection,
            let activeTargetID,
-           suggestionSet.suggestions.contains(where: { $0.id == activeTargetID })
+           filteredSuggestionSet.suggestions.contains(where: { $0.id == activeTargetID })
         {
             self.activeTargetID = activeTargetID
         } else {
-            activeTargetID = suggestionSet.suggestions.first?.id
+            activeTargetID = filteredSuggestionSet.suggestions.first?.id
         }
+    }
+
+    private func filteredSuggestionSet(
+        from suggestionSet: CoverageNavigationSuggestionSet
+    ) -> CoverageNavigationSuggestionSet {
+        guard !excludedSegmentIDs.isEmpty else { return suggestionSet }
+
+        let suggestions = suggestionSet.suggestions.compactMap(filteredSuggestion)
+        return CoverageNavigationSuggestionSet(
+            areaID: suggestionSet.areaID,
+            areaDisplayName: suggestionSet.areaDisplayName,
+            generatedAt: suggestionSet.generatedAt,
+            origin: suggestionSet.origin,
+            suggestions: suggestions
+        )
+    }
+
+    private func filteredSuggestion(
+        _ suggestion: CoverageNavigationTarget
+    ) -> CoverageNavigationTarget? {
+        let remainingSegmentIDs = suggestion.segmentIDs.filter { !excludedSegmentIDs.contains($0) }
+        guard !remainingSegmentIDs.isEmpty else { return nil }
+        guard remainingSegmentIDs.count != suggestion.segmentIDs.count else { return suggestion }
+
+        let originalCount = max(suggestion.undrivenSegmentCount, suggestion.segmentIDs.count, 1)
+        let remainingCount = remainingSegmentIDs.count
+        let remainingLengthMiles = suggestion.undrivenLengthMiles * Double(remainingCount) / Double(originalCount)
+        let destination = remainingSegmentIDs.compactMap { suggestion.segmentDestinations[$0] }.first ?? suggestion.destination
+
+        return CoverageNavigationTarget(
+            id: suggestion.id,
+            rank: suggestion.rank,
+            title: suggestion.title,
+            reason: String(format: "%d undriven segments • %.1f mi remaining", remainingCount, remainingLengthMiles),
+            destination: destination,
+            bbox: suggestion.bbox,
+            segmentIDs: remainingSegmentIDs,
+            segmentDestinations: suggestion.segmentDestinations,
+            undrivenSegmentCount: remainingCount,
+            undrivenLengthMiles: remainingLengthMiles,
+            distanceFromOriginMiles: suggestion.distanceFromOriginMiles,
+            etaMinutes: suggestion.etaMinutes,
+            score: suggestion.score
+        )
     }
 }

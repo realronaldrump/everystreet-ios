@@ -154,6 +154,7 @@ final class GeometrySimplifierTests: XCTestCase {
             destination: CoverageNavigationCoordinate(latitude: 31.55, longitude: -97.14),
             bbox: MapBoundingBox(minLon: -97.20, minLat: 31.50, maxLon: -97.10, maxLat: 31.60),
             segmentIDs: segmentIDs,
+            segmentDestinations: [:],
             undrivenSegmentCount: segmentIDs.count,
             undrivenLengthMiles: 1.0,
             distanceFromOriginMiles: 0.7,

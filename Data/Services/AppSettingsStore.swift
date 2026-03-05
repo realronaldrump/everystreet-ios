@@ -9,6 +9,7 @@ final class AppSettingsStore {
         static let customStart = "custom_start_date"
         static let customEnd = "custom_end_date"
         static let selectedCoverageAreaID = "selected_coverage_area_id"
+        static let locallyDrivenSegmentsByArea = "locally_driven_segments_by_area"
     }
 
     private static let fixedAPIBaseURL = URL(string: "https://www.everystreet.me")!
@@ -50,5 +51,36 @@ final class AppSettingsStore {
             let trimmed = newValue?.trimmingCharacters(in: .whitespacesAndNewlines)
             defaults.set(trimmed?.isEmpty == false ? trimmed : nil, forKey: Keys.selectedCoverageAreaID)
         }
+    }
+
+    func locallyDrivenSegmentIDs(for areaID: String?) -> Set<String> {
+        guard let areaID = normalizedAreaID(areaID) else { return [] }
+        let stored = locallyDrivenSegmentsByArea()[areaID] ?? []
+        return Set(stored)
+    }
+
+    func setLocallyDrivenSegmentIDs(_ ids: Set<String>, for areaID: String?) {
+        guard let areaID = normalizedAreaID(areaID) else { return }
+
+        var store = locallyDrivenSegmentsByArea()
+        if ids.isEmpty {
+            store.removeValue(forKey: areaID)
+        } else {
+            store[areaID] = Array(ids).sorted()
+        }
+
+        if let data = try? JSONEncoder().encode(store) {
+            defaults.set(data, forKey: Keys.locallyDrivenSegmentsByArea)
+        }
+    }
+
+    private func locallyDrivenSegmentsByArea() -> [String: [String]] {
+        guard let data = defaults.data(forKey: Keys.locallyDrivenSegmentsByArea) else { return [:] }
+        return (try? JSONDecoder().decode([String: [String]].self, from: data)) ?? [:]
+    }
+
+    private func normalizedAreaID(_ areaID: String?) -> String? {
+        let trimmed = areaID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == false ? trimmed : nil
     }
 }

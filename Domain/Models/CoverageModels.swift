@@ -146,6 +146,7 @@ struct CoverageNavigationTarget: Identifiable, Hashable {
     let destination: CoverageNavigationCoordinate
     let bbox: MapBoundingBox
     let segmentIDs: [String]
+    let segmentDestinations: [String: CoverageNavigationCoordinate]
     let undrivenSegmentCount: Int
     let undrivenLengthMiles: Double
     let distanceFromOriginMiles: Double?

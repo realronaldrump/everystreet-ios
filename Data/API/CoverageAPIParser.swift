@@ -252,6 +252,7 @@ enum CoverageAPIParser {
             destination: destination,
             bbox: bbox,
             segmentIDs: segmentIDs,
+            segmentDestinations: [:],
             undrivenSegmentCount: raw.int("undriven_segment_count") ?? segmentIDs.count,
             undrivenLengthMiles: raw.double("undriven_length_miles") ?? 0,
             distanceFromOriginMiles: raw.double("distance_from_origin_miles"),
@@ -311,6 +312,15 @@ enum CoverageAPIParser {
         let segmentCount = raw.int("segment_count") ?? segmentIDs.count
         let totalLengthMiles = (raw.double("total_length_m") ?? 0) / 1_609.344
         let distanceMiles = (raw.double("distance_to_cluster_m") ?? 0) / 1_609.344
+        let segmentDestinations = Dictionary(uniqueKeysWithValues: segmentObjects.compactMap { segment -> (String, CoverageNavigationCoordinate)? in
+            guard let segmentID = segment.string("segment_id") else { return nil }
+            let coordinates = JSONHelpers.coordinates(from: segment["geometry"])
+            guard let midpoint = midpointCoordinate(of: coordinates) else { return nil }
+            return (
+                segmentID,
+                CoverageNavigationCoordinate(latitude: midpoint.latitude, longitude: midpoint.longitude)
+            )
+        })
 
         return CoverageNavigationTarget(
             id: targetID,
@@ -323,6 +333,7 @@ enum CoverageAPIParser {
             ),
             bbox: bbox,
             segmentIDs: segmentIDs,
+            segmentDestinations: segmentDestinations,
             undrivenSegmentCount: segmentCount,
             undrivenLengthMiles: totalLengthMiles,
             distanceFromOriginMiles: distanceMiles > 0 ? distanceMiles : nil,

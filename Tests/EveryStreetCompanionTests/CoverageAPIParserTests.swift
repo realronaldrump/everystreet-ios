@@ -284,6 +284,20 @@ final class CoverageNavigationControllerTests: XCTestCase {
         XCTAssertEqual(launcher.launchedTargetIDs, ["cluster-a"])
     }
 
+    func testExcludedSegmentsFilterClusterSuggestions() async {
+        let repository = MockCoverageRepository()
+        repository.navigationResponses = [makeSuggestionSet(ids: ["cluster-a"], generatedAt: Date(timeIntervalSince1970: 100))]
+        let controller = CoverageNavigationController(repository: repository)
+        let origin = CLLocationCoordinate2D(latitude: 31.5493, longitude: -97.1467)
+
+        await controller.loadSuggestions(areaID: "area-1", origin: origin, preserveActiveSelection: false)
+        controller.setExcludedSegmentIDs(["seg-0-a"])
+
+        XCTAssertEqual(controller.activeTarget?.segmentIDs, ["seg-0-b"])
+        XCTAssertEqual(controller.activeTarget?.undrivenSegmentCount, 1)
+        XCTAssertEqual(controller.activeTarget?.destination.latitude, 31.5506, accuracy: 0.000001)
+    }
+
     func testLaunchNavigationToTappedSegmentUsesMapsLauncher() {
         let repository = MockCoverageRepository()
         let launcher = MockMapsLauncher()
@@ -327,6 +341,16 @@ final class CoverageNavigationControllerTests: XCTestCase {
                         maxLat: 31.5540 + Double(index) * 0.001
                     ),
                     segmentIDs: ["seg-\(index)-a", "seg-\(index)-b"],
+                    segmentDestinations: [
+                        "seg-\(index)-a": CoverageNavigationCoordinate(
+                            latitude: 31.5498 + Double(index) * 0.001,
+                            longitude: -97.1462 + Double(index) * 0.001
+                        ),
+                        "seg-\(index)-b": CoverageNavigationCoordinate(
+                            latitude: 31.5506 + Double(index) * 0.001,
+                            longitude: -97.1454 + Double(index) * 0.001
+                        ),
+                    ],
                     undrivenSegmentCount: 2,
                     undrivenLengthMiles: 1.0 + Double(index) * 0.2,
                     distanceFromOriginMiles: 0.5 + Double(index) * 0.3,

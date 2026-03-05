@@ -391,30 +391,44 @@ struct MapTabView: View {
                 await viewModel.load(query: appModel.activeQuery, appModel: appModel)
             }
 
-            updateNavigationProgress()
+            await syncCoverageNavigationState()
         }
         .onChange(of: locationController.locationRevision) { _, _ in
             centerOnDeferredLocationIfNeeded()
-            updateNavigationProgress()
+            Task {
+                await syncCoverageNavigationState()
+            }
         }
         .onChange(of: locationController.isTripRecording) { _, _ in
-            updateNavigationProgress()
+            Task {
+                await syncCoverageNavigationState()
+            }
         }
         .onChange(of: viewModel.selectedLayer) { _, newValue in
             navigationController.syncContext(
                 selectedLayer: newValue,
                 areaID: viewModel.selectedCoverageAreaID
             )
-            updateNavigationProgress()
+            Task {
+                await syncCoverageNavigationState()
+            }
         }
         .onChange(of: viewModel.selectedCoverageAreaID) { _, newValue in
             navigationController.syncContext(
                 selectedLayer: viewModel.selectedLayer,
                 areaID: newValue
             )
-            updateNavigationProgress()
+            Task {
+                await syncCoverageNavigationState()
+            }
         }
         .onChange(of: viewModel.coverageFeatures) { _, _ in
+            Task {
+                await syncCoverageNavigationState()
+            }
+        }
+        .onChange(of: viewModel.locallyDrivenSegmentIDs) { _, _ in
+            syncNavigationExclusions()
             updateNavigationProgress()
         }
         .onChange(of: navigationController.activeTargetID) { _, _ in
@@ -649,63 +663,53 @@ struct MapTabView: View {
             locationController.canDisplayUserLocation
     }
 
-    private var navigationPrimaryTitle: String {
-        if navigationController.activeTarget == nil {
-            return navigationCurrentCoordinate == nil ? "Waiting for GPS" : "Find Target"
-        }
-
-        return navigationController.isLikelyComplete ? "Next Cluster" : "Navigate"
-    }
-
-    private var navigationPrimaryIcon: String {
-        if navigationController.isLoading {
-            return "arrow.triangle.2.circlepath"
-        }
-        if navigationController.activeTarget == nil {
-            return "scope"
-        }
-        return navigationController.isLikelyComplete ? "point.3.connected.trianglepath.dotted" : "arrow.turn.up.right"
-    }
-
-    private var navigationPrimaryTint: Color {
-        if navigationController.activeTarget == nil {
-            return AppTheme.accent
-        }
-        return navigationController.isLikelyComplete ? AppTheme.success : AppTheme.accentWarm
-    }
-
     private var navigationCurrentCoordinate: CLLocationCoordinate2D? {
         locationController.currentCoordinate
     }
 
-    private var navigationPrimaryDisabled: Bool {
-        if navigationController.isLoading {
-            return true
-        }
-        if navigationController.activeTarget == nil {
-            return navigationCurrentCoordinate == nil
-        }
-        if navigationController.isLikelyComplete {
-            return navigationCurrentCoordinate == nil
-        }
-        return false
+    private var canRequestNavigationActions: Bool {
+        navigationCurrentCoordinate != nil && !navigationController.isLoading
     }
 
     private var mapActionStack: some View {
         VStack(alignment: .trailing, spacing: AppTheme.spacingSM) {
             if navigationHelperVisible {
-                recordingControlButton(
-                    title: navigationPrimaryTitle,
-                    icon: navigationPrimaryIcon,
-                    tint: navigationPrimaryTint,
-                    action: {
-                        Task {
-                            await handleNavigationPrimaryAction()
+                HStack(spacing: AppTheme.spacingXS) {
+                    recordingControlButton(
+                        title: "Find Target",
+                        icon: navigationController.isLoading ? "arrow.triangle.2.circlepath" : "scope",
+                        tint: AppTheme.accent,
+                        action: {
+                            Task {
+                                await fetchClusterTargets()
+                            }
                         }
+                    )
+                    .disabled(!canRequestNavigationActions)
+                    .opacity(canRequestNavigationActions ? 1 : 0.55)
+
+                    recordingControlButton(
+                        title: "Nearest",
+                        icon: "location.north.line.fill",
+                        tint: AppTheme.accentWarm,
+                        action: {
+                            navigateToNearestUndrivenStreet()
+                        }
+                    )
+                    .disabled(!canRequestNavigationActions)
+                    .opacity(canRequestNavigationActions ? 1 : 0.55)
+
+                    if navigationController.hasSuggestions {
+                        recordingControlButton(
+                            title: "Clear",
+                            icon: "xmark",
+                            tint: AppTheme.textSecondary,
+                            action: {
+                                clearNavigationCluster()
+                            }
+                        )
                     }
-                )
-                .disabled(navigationPrimaryDisabled)
-                .opacity(navigationPrimaryDisabled ? 0.55 : 1)
+                }
                 .transition(.move(edge: .trailing).combined(with: .opacity))
             }
 
@@ -1234,7 +1238,7 @@ struct MapTabView: View {
             Text(
                 navigationCurrentCoordinate == nil
                     ? "The helper will rank nearby undriven clusters once the phone has a current position."
-                    : "Use Find Target to rank the best nearby undriven clusters in this coverage area."
+                    : "Use Find Target for clusters, Nearest Street for the closest undriven segment, or tap a visible undriven street directly."
             )
             .font(.caption)
             .foregroundStyle(AppTheme.textSecondary)
@@ -1313,6 +1317,26 @@ struct MapTabView: View {
                     Task {
                         await advanceToNextNavigationTarget()
                     }
+                }
+            }
+
+            HStack(spacing: AppTheme.spacingSM) {
+                navigationActionButton(
+                    title: "Nearest Street",
+                    icon: "location.north.line.fill",
+                    tint: AppTheme.accent,
+                    disabled: navigationCurrentCoordinate == nil
+                ) {
+                    navigateToNearestUndrivenStreet()
+                }
+
+                navigationActionButton(
+                    title: "Clear Cluster",
+                    icon: "xmark",
+                    tint: AppTheme.textSecondary,
+                    disabled: false
+                ) {
+                    clearNavigationCluster()
                 }
             }
         }
@@ -1929,21 +1953,9 @@ struct MapTabView: View {
         viewModel.focus(on: coordinate)
     }
 
-    private func handleNavigationPrimaryAction() async {
+    private func fetchClusterTargets() async {
         guard let areaID = viewModel.selectedCoverageAreaID else { return }
-        trayDetent = .expanded
-
-        if navigationController.activeTarget == nil {
-            await fetchNavigationSuggestions(areaID: areaID, preserveActiveSelection: false)
-            return
-        }
-
-        if navigationController.isLikelyComplete {
-            await advanceToNextNavigationTarget()
-            return
-        }
-
-        _ = navigationController.launchNavigation()
+        await fetchNavigationSuggestions(areaID: areaID, preserveActiveSelection: false)
     }
 
     private func fetchNavigationSuggestions(
@@ -1957,6 +1969,7 @@ struct MapTabView: View {
             origin: coordinate,
             preserveActiveSelection: preserveActiveSelection
         )
+        syncNavigationExclusions()
         updateNavigationProgress()
         focusOnActiveNavigationTarget()
     }
@@ -1970,6 +1983,7 @@ struct MapTabView: View {
 
         trayDetent = .expanded
         await navigationController.advanceToNextTarget(areaID: areaID, origin: coordinate)
+        syncNavigationExclusions()
         updateNavigationProgress()
         focusOnActiveNavigationTarget()
     }
@@ -1983,6 +1997,7 @@ struct MapTabView: View {
         }
 
         await navigationController.refreshIfNeededOnReturn(areaID: areaID, origin: coordinate)
+        syncNavigationExclusions()
         updateNavigationProgress()
         focusOnActiveNavigationTarget()
     }
@@ -1993,6 +2008,35 @@ struct MapTabView: View {
             trackedPathSegments: locationController.trackedPathSegments,
             isTripRecording: locationController.isTripRecording
         )
+    }
+
+    private func syncNavigationExclusions() {
+        navigationController.setExcludedSegmentIDs(viewModel.locallyDrivenSegmentIDs)
+    }
+
+    private func syncCoverageNavigationState() async {
+        _ = await viewModel.recordLocallyDrivenSegments(
+            trackedPathSegments: locationController.trackedPathSegments,
+            isTripRecording: locationController.isTripRecording
+        )
+        syncNavigationExclusions()
+        updateNavigationProgress()
+    }
+
+    private func navigateToNearestUndrivenStreet() {
+        guard let coordinate = navigationCurrentCoordinate else { return }
+        guard let segment = viewModel.nearestUndrivenSegment(to: coordinate) else {
+            navigationController.errorMessage = "No undriven street is available in this area."
+            trayDetent = .expanded
+            return
+        }
+
+        trayDetent = .expanded
+        _ = navigationController.launchNavigation(to: segment)
+    }
+
+    private func clearNavigationCluster() {
+        navigationController.clearSession(resetArea: false)
     }
 
     private func handleUndrivenSegmentTap(_ segment: MapSelectableCoverageSegment) {

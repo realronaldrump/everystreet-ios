@@ -118,6 +118,18 @@ enum MapGeometry {
         )
     }
 
+    static func distance(
+        from coordinate: CLLocationCoordinate2D,
+        toPolyline polyline: [CLLocationCoordinate2D]
+    ) -> Double {
+        guard !polyline.isEmpty else { return .greatestFiniteMagnitude }
+
+        let projectedPoint = project(coordinate, referenceLatitude: coordinate.latitude)
+        let projectedPolyline = polyline.map { project($0, referenceLatitude: coordinate.latitude) }
+
+        return minDistance(from: projectedPoint, toPolyline: projectedPolyline)
+    }
+
     private static func orderedUnique(_ values: [String]) -> [String] {
         var seen = Set<String>()
         var output: [String] = []
