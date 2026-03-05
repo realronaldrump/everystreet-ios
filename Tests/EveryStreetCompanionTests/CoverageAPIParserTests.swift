@@ -295,7 +295,8 @@ final class CoverageNavigationControllerTests: XCTestCase {
 
         XCTAssertEqual(controller.activeTarget?.segmentIDs, ["seg-0-b"])
         XCTAssertEqual(controller.activeTarget?.undrivenSegmentCount, 1)
-        XCTAssertEqual(controller.activeTarget?.destination.latitude, 31.5506, accuracy: 0.000001)
+        let destinationLatitude = try XCTUnwrap(controller.activeTarget?.destination.latitude)
+        XCTAssertEqual(destinationLatitude, 31.5506, accuracy: 0.000001)
     }
 
     func testLaunchNavigationToTappedSegmentUsesMapsLauncher() {
