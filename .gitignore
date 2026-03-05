@@ -1,0 +1,39 @@
+# macOS
+.DS_Store
+
+# Xcode build artifacts
+build/
+DerivedData/
+*.ipa
+*.dSYM
+*.dSYM.zip
+
+# Xcode user data
+*.mode1v3
+*.mode2v3
+*.moved-aside
+*.pbxuser
+*.perspectivev3
+*.xcuserstate
+xcuserdata/
+
+# Xcode source control/user state
+*.xccheckout
+*.xcscmblueprint
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Dependency managers
+Pods/
+Carthage/Build/
+
+# Logs and temp files
+*.log
+*.swp
+*.tmp
+
+# Environment/local-only files
+.env
+.env.*

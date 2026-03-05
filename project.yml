@@ -1,0 +1,56 @@
+name: EveryStreetCompanion
+options:
+  minimumXcodeGenVersion: 2.44.0
+  xcodeVersion: "26.0"
+  createIntermediateGroups: true
+configs:
+  Debug: debug
+  Release: release
+settings:
+  base:
+    SWIFT_VERSION: 6.2
+    IPHONEOS_DEPLOYMENT_TARGET: 26.0
+targets:
+  EveryStreetCompanion:
+    type: application
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: App
+      - path: Core
+      - path: Domain
+      - path: Data
+      - path: Features
+    resources:
+      - path: Resources
+        excludes:
+          - "**/*.md"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.everystreet.companion
+        INFOPLIST_FILE: App/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: 1.0
+        DEVELOPMENT_TEAM: ""
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_TESTABILITY: YES
+        CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED: YES
+        SWIFT_STRICT_CONCURRENCY: complete
+    scheme:
+      gatherCoverageData: true
+      testTargets:
+        - EveryStreetCompanionTests
+  EveryStreetCompanionTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: Tests/EveryStreetCompanionTests
+    dependencies:
+      - target: EveryStreetCompanion
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.everystreet.companion.tests
+        GENERATE_INFOPLIST_FILE: YES
