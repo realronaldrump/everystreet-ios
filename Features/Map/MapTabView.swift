@@ -7,6 +7,7 @@ import UIKit
 struct MapTabView: View {
     @Bindable var appModel: AppModel
     @State private var viewModel: MapTabViewModel
+    @State private var showTripFilters = false
 
     private let repository: TripsRepository
 
@@ -71,7 +72,14 @@ struct MapTabView: View {
                     }
                 }
             }
-            .mapStyle(.standard(elevation: .realistic))
+            .mapStyle(
+                .standard(
+                    elevation: .realistic,
+                    emphasis: .muted,
+                    pointsOfInterest: .excludingAll,
+                    showsTraffic: false
+                )
+            )
             .onMapCameraChange(frequency: .onEnd) { context in
                 viewModel.update(region: context.region)
             }
@@ -91,11 +99,7 @@ struct MapTabView: View {
 
                 if viewModel.selectedLayer == .trips {
                     SyncStatusBanner(state: appModel.syncState)
-                    GlobalFilterBar(appModel: appModel, compact: true) {
-                        Task {
-                            await viewModel.load(query: appModel.activeQuery, appModel: appModel)
-                        }
-                    }
+                    tripFiltersSection
                 }
 
                 if let error = viewModel.currentLayerErrorMessage {
@@ -103,7 +107,7 @@ struct MapTabView: View {
                 }
             }
             .padding(.horizontal, AppTheme.spacingLG)
-            .padding(.top, 52)
+            .padding(.top, AppTheme.spacingSM)
             .frame(maxHeight: .infinity, alignment: .top)
 
             Group {
@@ -114,7 +118,7 @@ struct MapTabView: View {
                 }
             }
             .padding(.horizontal, AppTheme.spacingLG)
-            .padding(.bottom, 94)
+            .padding(.bottom, 76)
             .frame(maxHeight: .infinity, alignment: .bottom)
         }
         .toolbar(.hidden, for: .navigationBar)
@@ -157,28 +161,14 @@ struct MapTabView: View {
 
     private var layerControls: some View {
         VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
-            HStack {
-                Label("Layer Controls", systemImage: "square.3.layers.3d")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(AppTheme.textSecondary)
-
-                Spacer()
-
-                if let area = viewModel.selectedCoverageArea, viewModel.selectedLayer == .coverage {
-                    Text(String(format: "%.1f%%", area.coveragePercentage))
-                        .font(.caption2.weight(.bold).monospacedDigit())
-                        .foregroundStyle(AppTheme.accent)
-                        .padding(.horizontal, AppTheme.spacingSM)
-                        .padding(.vertical, AppTheme.spacingXS)
-                        .background(AppTheme.accentMuted, in: Capsule())
-                }
-            }
-
             Picker(
                 "Map Layer",
                 selection: Binding(
                     get: { viewModel.selectedLayer },
                     set: { newLayer in
+                        if newLayer != .trips {
+                            showTripFilters = false
+                        }
                         Task {
                             await viewModel.setLayer(newLayer)
                         }
@@ -248,9 +238,72 @@ struct MapTabView: View {
                     legendChip(label: "Undriven", status: .undriven)
                     legendChip(label: "Undriveable", status: .undriveable)
                 }
+            } else {
+                HStack(spacing: AppTheme.spacingSM) {
+                    Text("Layer Controls")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.textTertiary)
+                    Spacer()
+                    Text(selectedVehicleLabel)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .lineLimit(1)
+                    Text("•")
+                        .font(.caption2)
+                        .foregroundStyle(AppTheme.textTertiary)
+                    Text(appModel.activeDateRange.shortLabel)
+                        .font(.caption2.weight(.medium).monospacedDigit())
+                        .foregroundStyle(AppTheme.textSecondary)
+                }
             }
         }
         .glassCard(padding: AppTheme.spacingMD, cornerRadius: AppTheme.radiusMD)
+    }
+
+    private var tripFiltersSection: some View {
+        VStack(spacing: AppTheme.spacingSM) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showTripFilters.toggle()
+                }
+            } label: {
+                HStack(spacing: AppTheme.spacingSM) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.accent)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Trip Filters")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(AppTheme.textPrimary)
+                        Text("\(selectedVehicleLabel) • \(appModel.activeDateRange.shortLabel)")
+                            .font(.caption2.weight(.medium).monospacedDigit())
+                            .foregroundStyle(AppTheme.textTertiary)
+                            .lineLimit(1)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: showTripFilters ? "chevron.up" : "chevron.down")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppTheme.textTertiary)
+                }
+            }
+            .buttonStyle(.pressable)
+            .glassCard(padding: AppTheme.spacingMD, cornerRadius: AppTheme.radiusMD)
+
+            if showTripFilters {
+                GlobalFilterBar(appModel: appModel, compact: true) {
+                    Task {
+                        await viewModel.load(query: appModel.activeQuery, appModel: appModel)
+                    }
+                }
+                .transition(.asymmetric(
+                    insertion: .move(edge: .top).combined(with: .opacity),
+                    removal: .opacity
+                ))
+            }
+        }
     }
 
     // MARK: - Bottom Trays
@@ -510,6 +563,15 @@ struct MapTabView: View {
     private func distanceLabel(_ distance: Double?) -> String {
         guard let distance else { return "-- mi" }
         return String(format: "%.1f mi", distance)
+    }
+
+    private var selectedVehicleLabel: String {
+        if let imei = appModel.selectedIMEI,
+           let vehicle = appModel.vehicles.first(where: { $0.imei == imei })
+        {
+            return vehicle.displayName
+        }
+        return "All Vehicles"
     }
 
     private func destinationLabel(for trip: TripSummary) -> String {
