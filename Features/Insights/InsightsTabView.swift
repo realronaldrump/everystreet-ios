@@ -251,16 +251,11 @@ struct InsightsTabView: View {
         return day
     }
 
-    /// Shorten hour labels to concise format
-    private func abbreviateHour(_ hour: String) -> String {
-        let trimmed = hour.trimmingCharacters(in: .whitespaces)
-        if trimmed.count <= 5 { return trimmed }
-        if let num = Int(trimmed) {
-            let suffix = num >= 12 ? "p" : "a"
-            let display = num == 0 ? 12 : (num > 12 ? num - 12 : num)
-            return "\(display)\(suffix)"
-        }
-        return String(trimmed.prefix(5))
+    /// Format an hour integer (0–23) to a compact 12-hour label
+    private func hourLabel(_ hour: Int) -> String {
+        let suffix = hour >= 12 ? "p" : "a"
+        let display = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour)
+        return "\(display)\(suffix)"
     }
 
     /// Shorten date labels like "2025-03-01" -> "Mar 1"
