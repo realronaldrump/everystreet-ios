@@ -374,6 +374,7 @@ private struct CoverageAreaMapPanel: View {
                     regionRevision: viewModel.cameraRevision,
                     showsUserLocation: false,
                     overlayGroups: viewModel.activeOverlayGroups,
+                    annotationItems: [],
                     onRegionChange: { region in
                         viewModel.update(region: region)
                     }

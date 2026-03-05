@@ -1,4 +1,5 @@
 import Foundation
+import CoreLocation
 
 @MainActor
 protocol TripsRepository {
@@ -27,6 +28,11 @@ protocol CoverageRepository {
         areaID: String,
         status: CoverageMapStatusFilter
     ) async throws -> CoverageMapBundle
+    func loadNavigationSuggestions(
+        areaID: String,
+        origin: CLLocationCoordinate2D,
+        limit: Int
+    ) async throws -> CoverageNavigationSuggestionSet
 }
 
 struct TripCacheStats: Equatable {

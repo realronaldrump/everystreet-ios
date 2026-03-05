@@ -1,3 +1,4 @@
+import CoreLocation
 import Foundation
 
 enum CoverageAPIParser {
@@ -70,6 +71,65 @@ enum CoverageAPIParser {
             bbox: bbox,
             segmentCount: segmentCount,
             segments: segments
+        )
+    }
+
+    static func parseNavigationSuggestionSet(data: Data) throws -> CoverageNavigationSuggestionSet {
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw APIError.decodingFailed(context: "coverage-navigation-root")
+        }
+
+        let generatedAt = root.date("generated_at") ?? .now
+
+        let areaObject = root["area"] as? [String: Any]
+        let areaID = areaObject?.string("id") ?? root.string("area_id")
+        let areaDisplayName = areaObject?.string("display_name") ?? root.string("area_display_name")
+
+        guard let areaID, let areaDisplayName else {
+            throw APIError.decodingFailed(context: "coverage-navigation-area")
+        }
+
+        guard let origin = parseNavigationCoordinate(root["origin"] ?? root["current_position"]) else {
+            throw APIError.decodingFailed(context: "coverage-navigation-origin")
+        }
+
+        let suggestions = (root["suggestions"] as? [[String: Any]] ?? []).compactMap(parseNavigationTarget)
+
+        return CoverageNavigationSuggestionSet(
+            areaID: areaID,
+            areaDisplayName: areaDisplayName,
+            generatedAt: generatedAt,
+            origin: origin,
+            suggestions: suggestions.sorted { lhs, rhs in
+                if lhs.rank == rhs.rank {
+                    return lhs.id < rhs.id
+                }
+                return lhs.rank < rhs.rank
+            }
+        )
+    }
+
+    static func parseLegacyNavigationSuggestionSet(
+        data: Data,
+        areaID: String,
+        areaDisplayName: String?,
+        origin: CLLocationCoordinate2D
+    ) throws -> CoverageNavigationSuggestionSet {
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw APIError.decodingFailed(context: "legacy-coverage-navigation-root")
+        }
+
+        let clusters = root["suggested_clusters"] as? [[String: Any]] ?? []
+        let suggestions = clusters.enumerated().compactMap { index, cluster in
+            parseLegacyNavigationTarget(cluster, rank: index + 1)
+        }
+
+        return CoverageNavigationSuggestionSet(
+            areaID: areaID,
+            areaDisplayName: areaDisplayName ?? areaID,
+            generatedAt: .now,
+            origin: CoverageNavigationCoordinate(latitude: origin.latitude, longitude: origin.longitude),
+            suggestions: suggestions
         )
     }
 
@@ -170,5 +230,145 @@ enum CoverageAPIParser {
             bbox: bbox,
             geom: geom
         )
+    }
+
+    private static func parseNavigationTarget(_ raw: [String: Any]) -> CoverageNavigationTarget? {
+        guard let id = raw.string("id") else { return nil }
+        guard let title = raw.string("title") ?? raw.string("name") else { return nil }
+        guard let destination = parseNavigationCoordinate(raw["destination_coordinate"] ?? raw["destination"]) else { return nil }
+
+        let bboxRaw = raw["bbox"] as? [Any]
+        let bboxValues = bboxRaw?.compactMap(JSONHelpers.double(from:)) ?? []
+        guard let bbox = MapBoundingBox(array: bboxValues) else { return nil }
+
+        let segmentIDs = (raw["segment_ids"] as? [Any] ?? []).compactMap(JSONHelpers.string(from:))
+        let rank = raw.int("rank") ?? Int(raw.double("rank") ?? 0)
+
+        return CoverageNavigationTarget(
+            id: id,
+            rank: rank > 0 ? rank : 1,
+            title: title,
+            reason: raw.string("reason") ?? "Undriven cluster nearby",
+            destination: destination,
+            bbox: bbox,
+            segmentIDs: segmentIDs,
+            undrivenSegmentCount: raw.int("undriven_segment_count") ?? segmentIDs.count,
+            undrivenLengthMiles: raw.double("undriven_length_miles") ?? 0,
+            distanceFromOriginMiles: raw.double("distance_from_origin_miles"),
+            etaMinutes: raw.double("eta_minutes"),
+            score: raw.double("score")
+        )
+    }
+
+    private static func parseNavigationCoordinate(_ raw: Any?) -> CoverageNavigationCoordinate? {
+        if let point = raw as? [Any], let coordinate = JSONHelpers.parsePoint(point) {
+            return CoverageNavigationCoordinate(
+                latitude: coordinate.latitude,
+                longitude: coordinate.longitude
+            )
+        }
+
+        guard let object = raw as? [String: Any] else { return nil }
+
+        let latitude = object.double("lat") ?? object.double("latitude")
+        let longitude = object.double("lon") ?? object.double("lng") ?? object.double("longitude")
+
+        guard let latitude, let longitude else { return nil }
+
+        return CoverageNavigationCoordinate(latitude: latitude, longitude: longitude)
+    }
+
+    private static func parseLegacyNavigationTarget(
+        _ raw: [String: Any],
+        rank: Int
+    ) -> CoverageNavigationTarget? {
+        let segmentObjects = raw["segments"] as? [[String: Any]] ?? []
+        let segmentIDs = segmentObjects.compactMap { segment in
+            segment.string("segment_id")
+        }
+
+        let allCoordinates = segmentObjects.flatMap { segment in
+            JSONHelpers.coordinates(from: segment["geometry"])
+        }
+
+        let bbox = makeMapBoundingBox(from: allCoordinates)
+        guard let bbox else { return nil }
+
+        let nearestSegment = raw["nearest_segment"] as? [String: Any]
+        let nearestSegmentCoordinates = JSONHelpers.coordinates(from: nearestSegment?["geometry"])
+        let destinationCoordinate = midpointCoordinate(of: nearestSegmentCoordinates)
+            ?? midpointCoordinate(of: allCoordinates)
+            ?? parseNavigationCoordinate(raw["centroid"])?.clLocationCoordinate2D
+
+        guard let destinationCoordinate else { return nil }
+
+        let targetID = raw.string("cluster_id") ?? "cluster-\(rank)"
+        let nearestStreetName = nearestSegment?.string("street_name")
+        let title = nearestStreetName?.isEmpty == false
+            ? "Cluster near \(nearestStreetName!)"
+            : "Undriven cluster \(rank)"
+
+        let segmentCount = raw.int("segment_count") ?? segmentIDs.count
+        let totalLengthMiles = (raw.double("total_length_m") ?? 0) / 1_609.344
+        let distanceMiles = (raw.double("distance_to_cluster_m") ?? 0) / 1_609.344
+
+        return CoverageNavigationTarget(
+            id: targetID,
+            rank: rank,
+            title: title,
+            reason: String(format: "%d undriven segments • %.1f mi remaining", segmentCount, totalLengthMiles),
+            destination: CoverageNavigationCoordinate(
+                latitude: destinationCoordinate.latitude,
+                longitude: destinationCoordinate.longitude
+            ),
+            bbox: bbox,
+            segmentIDs: segmentIDs,
+            undrivenSegmentCount: segmentCount,
+            undrivenLengthMiles: totalLengthMiles,
+            distanceFromOriginMiles: distanceMiles > 0 ? distanceMiles : nil,
+            etaMinutes: nil,
+            score: raw.double("efficiency_score")
+        )
+    }
+
+    private static func makeMapBoundingBox(from coordinates: [CLLocationCoordinate2D]) -> MapBoundingBox? {
+        guard !coordinates.isEmpty else { return nil }
+
+        let latitudes = coordinates.map(\.latitude)
+        let longitudes = coordinates.map(\.longitude)
+
+        guard let minLat = latitudes.min(),
+              let maxLat = latitudes.max(),
+              let minLon = longitudes.min(),
+              let maxLon = longitudes.max()
+        else {
+            return nil
+        }
+
+        return MapBoundingBox(
+            minLon: minLon,
+            minLat: minLat,
+            maxLon: maxLon,
+            maxLat: maxLat
+        )
+    }
+
+    private static func midpointCoordinate(of coordinates: [CLLocationCoordinate2D]) -> CLLocationCoordinate2D? {
+        guard !coordinates.isEmpty else { return nil }
+        if coordinates.count == 1 {
+            return coordinates[0]
+        }
+
+        let middleIndex = coordinates.count / 2
+        if coordinates.count.isMultiple(of: 2) {
+            let first = coordinates[max(middleIndex - 1, 0)]
+            let second = coordinates[middleIndex]
+            return CLLocationCoordinate2D(
+                latitude: (first.latitude + second.latitude) / 2,
+                longitude: (first.longitude + second.longitude) / 2
+            )
+        }
+
+        return coordinates[middleIndex]
     }
 }

@@ -25,11 +25,21 @@ private enum MapTrayDetent: Int {
     }
 }
 
+struct MapAnnotationItem: Identifiable {
+    let id: String
+    let coordinate: CLLocationCoordinate2D
+    let title: String
+    let subtitle: String?
+    let glyphSystemName: String
+    let tintColor: UIColor
+}
+
 struct OverlayMKMapView: UIViewRepresentable {
     let region: MKCoordinateRegion
     let regionRevision: Int
     let showsUserLocation: Bool
     let overlayGroups: [OverlayRenderGroup]
+    let annotationItems: [MapAnnotationItem]
     let onRegionChange: (MKCoordinateRegion) -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -53,6 +63,7 @@ struct OverlayMKMapView: UIViewRepresentable {
 
         mapView.setRegion(region, animated: false)
         context.coordinator.apply(groups: overlayGroups, to: mapView)
+        context.coordinator.apply(annotationItems: annotationItems, to: mapView)
         return mapView
     }
 
@@ -62,10 +73,32 @@ struct OverlayMKMapView: UIViewRepresentable {
         }
 
         context.coordinator.apply(groups: overlayGroups, to: uiView)
+        context.coordinator.apply(annotationItems: annotationItems, to: uiView)
         context.coordinator.apply(region: region, revision: regionRevision, to: uiView)
     }
 
     final class Coordinator: NSObject, MKMapViewDelegate {
+        private final class StyledPointAnnotation: NSObject, MKAnnotation {
+            let id: String
+            let titleText: String
+            let subtitleText: String?
+            let glyphSystemName: String
+            let tintColor: UIColor
+            dynamic var coordinate: CLLocationCoordinate2D
+
+            init(item: MapAnnotationItem) {
+                id = item.id
+                titleText = item.title
+                subtitleText = item.subtitle
+                glyphSystemName = item.glyphSystemName
+                tintColor = item.tintColor
+                coordinate = item.coordinate
+            }
+
+            var title: String? { titleText }
+            var subtitle: String? { subtitleText }
+        }
+
         private let onRegionChange: (MKCoordinateRegion) -> Void
         private var styleByOverlayID: [ObjectIdentifier: OverlayLineStyle] = [:]
         private var lastRegionRevision = -1
@@ -85,6 +118,18 @@ struct OverlayMKMapView: UIViewRepresentable {
                 let id = ObjectIdentifier(group.overlay)
                 styleByOverlayID[id] = group.style
                 mapView.addOverlay(group.overlay)
+            }
+        }
+
+        func apply(annotationItems: [MapAnnotationItem], to mapView: MKMapView) {
+            let existing = mapView.annotations.compactMap { $0 as? StyledPointAnnotation }
+            if !existing.isEmpty {
+                mapView.removeAnnotations(existing)
+            }
+
+            let annotations = annotationItems.map(StyledPointAnnotation.init(item:))
+            if !annotations.isEmpty {
+                mapView.addAnnotations(annotations)
             }
         }
 
@@ -111,6 +156,25 @@ struct OverlayMKMapView: UIViewRepresentable {
             return MKOverlayRenderer(overlay: overlay)
         }
 
+        func mapView(_: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+            if annotation is MKUserLocation {
+                return nil
+            }
+
+            guard let annotation = annotation as? StyledPointAnnotation else { return nil }
+
+            let identifier = "navigation-marker"
+            let view = MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
+            view.annotation = annotation
+            view.markerTintColor = annotation.tintColor
+            view.glyphImage = UIImage(systemName: annotation.glyphSystemName)
+            view.canShowCallout = false
+            view.titleVisibility = .hidden
+            view.subtitleVisibility = .hidden
+            view.displayPriority = .required
+            return view
+        }
+
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated _: Bool) {
             guard !suppressRegionCallback else { return }
             onRegionChange(mapView.region)
@@ -120,9 +184,11 @@ struct OverlayMKMapView: UIViewRepresentable {
 
 struct MapTabView: View {
     @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
     @Bindable var appModel: AppModel
     @State private var viewModel: MapTabViewModel
     @State private var locationController = MapLocationController()
+    @State private var navigationController: CoverageNavigationController
     @State private var showFilterSheet = false
     @State private var shouldCenterOnNextLocationFix = false
     @State private var trayDetent: MapTrayDetent = .peek
@@ -144,6 +210,9 @@ struct MapTabView: View {
                 coordinateCache: coordinateCache
             )
         )
+        _navigationController = State(
+            initialValue: CoverageNavigationController(repository: coverageRepository)
+        )
     }
 
     var body: some View {
@@ -153,6 +222,7 @@ struct MapTabView: View {
                 regionRevision: viewModel.cameraRevision,
                 showsUserLocation: locationController.canDisplayUserLocation,
                 overlayGroups: mapOverlayGroups,
+                annotationItems: navigationAnnotationItems,
                 onRegionChange: { viewModel.update(region: $0) }
             )
             .ignoresSafeArea()
@@ -184,6 +254,12 @@ struct MapTabView: View {
                         .padding(.top, AppTheme.spacingSM)
                 }
 
+                if navigationHelperVisible, let navigationError = navigationController.errorMessage {
+                    errorBanner(navigationError)
+                        .padding(.horizontal, AppTheme.spacingLG)
+                        .padding(.top, AppTheme.spacingSM)
+                }
+
                 Spacer()
             }
 
@@ -207,13 +283,50 @@ struct MapTabView: View {
         .toolbar(.hidden, for: .navigationBar)
         .task {
             locationController.prepare()
+            navigationController.syncContext(
+                selectedLayer: viewModel.selectedLayer,
+                areaID: viewModel.selectedCoverageAreaID
+            )
 
             if viewModel.allTrips.isEmpty {
                 await viewModel.load(query: appModel.activeQuery, appModel: appModel)
             }
+
+            updateNavigationProgress()
         }
         .onChange(of: locationController.locationRevision) { _, _ in
             centerOnDeferredLocationIfNeeded()
+            updateNavigationProgress()
+        }
+        .onChange(of: locationController.isTripRecording) { _, _ in
+            updateNavigationProgress()
+        }
+        .onChange(of: viewModel.selectedLayer) { _, newValue in
+            navigationController.syncContext(
+                selectedLayer: newValue,
+                areaID: viewModel.selectedCoverageAreaID
+            )
+            updateNavigationProgress()
+        }
+        .onChange(of: viewModel.selectedCoverageAreaID) { _, newValue in
+            navigationController.syncContext(
+                selectedLayer: viewModel.selectedLayer,
+                areaID: newValue
+            )
+            updateNavigationProgress()
+        }
+        .onChange(of: viewModel.coverageFeatures) { _, _ in
+            updateNavigationProgress()
+        }
+        .onChange(of: navigationController.activeTargetID) { _, _ in
+            focusOnActiveNavigationTarget()
+            updateNavigationProgress()
+        }
+        .onChange(of: scenePhase) { _, newValue in
+            guard newValue == .active else { return }
+            Task {
+                await refreshNavigationSuggestionsIfNeeded()
+            }
         }
         .sheet(isPresented: $showFilterSheet) {
             filterSheet
@@ -232,6 +345,12 @@ struct MapTabView: View {
                 controlButton(icon: "arrow.clockwise", tint: AppTheme.accent) {
                     Task {
                         await viewModel.refreshCurrentLayer(query: appModel.activeQuery, appModel: appModel)
+                        if navigationHelperVisible,
+                           navigationController.hasSuggestions,
+                           let areaID = viewModel.selectedCoverageAreaID
+                        {
+                            await fetchNavigationSuggestions(areaID: areaID, preserveActiveSelection: true)
+                        }
                     }
                 }
             }
@@ -372,6 +491,12 @@ struct MapTabView: View {
         if let liveTripOverlayGroup {
             groups.append(liveTripOverlayGroup)
         }
+        groups.append(
+            contentsOf: viewModel.navigationOverlayGroups(
+                suggestions: navigationController.suggestions,
+                activeTargetID: navigationController.activeTargetID
+            )
+        )
         return groups
     }
 
@@ -399,8 +524,87 @@ struct MapTabView: View {
         locationController.trackedPathSegments.filter { $0.count > 1 }
     }
 
+    private var navigationAnnotationItems: [MapAnnotationItem] {
+        guard navigationHelperVisible, let activeTarget = navigationController.activeTarget else { return [] }
+
+        return [
+            MapAnnotationItem(
+                id: "navigation-target-\(activeTarget.id)",
+                coordinate: activeTarget.destination.clLocationCoordinate2D,
+                title: activeTarget.title,
+                subtitle: activeTarget.reason,
+                glyphSystemName: "flag.checkered",
+                tintColor: UIColor(AppTheme.accentWarm)
+            ),
+        ]
+    }
+
+    private var navigationHelperVisible: Bool {
+        viewModel.selectedLayer != .trips &&
+            viewModel.selectedCoverageArea != nil &&
+            locationController.canDisplayUserLocation
+    }
+
+    private var navigationPrimaryTitle: String {
+        if navigationController.activeTarget == nil {
+            return navigationCurrentCoordinate == nil ? "Waiting for GPS" : "Find Target"
+        }
+
+        return navigationController.isLikelyComplete ? "Next Cluster" : "Navigate"
+    }
+
+    private var navigationPrimaryIcon: String {
+        if navigationController.isLoading {
+            return "arrow.triangle.2.circlepath"
+        }
+        if navigationController.activeTarget == nil {
+            return "scope"
+        }
+        return navigationController.isLikelyComplete ? "point.3.connected.trianglepath.dotted" : "arrow.turn.up.right"
+    }
+
+    private var navigationPrimaryTint: Color {
+        if navigationController.activeTarget == nil {
+            return AppTheme.accent
+        }
+        return navigationController.isLikelyComplete ? AppTheme.success : AppTheme.accentWarm
+    }
+
+    private var navigationCurrentCoordinate: CLLocationCoordinate2D? {
+        locationController.currentCoordinate
+    }
+
+    private var navigationPrimaryDisabled: Bool {
+        if navigationController.isLoading {
+            return true
+        }
+        if navigationController.activeTarget == nil {
+            return navigationCurrentCoordinate == nil
+        }
+        if navigationController.isLikelyComplete {
+            return navigationCurrentCoordinate == nil
+        }
+        return false
+    }
+
     private var mapActionStack: some View {
         VStack(alignment: .trailing, spacing: AppTheme.spacingSM) {
+            if navigationHelperVisible {
+                recordingControlButton(
+                    title: navigationPrimaryTitle,
+                    icon: navigationPrimaryIcon,
+                    tint: navigationPrimaryTint,
+                    action: {
+                        Task {
+                            await handleNavigationPrimaryAction()
+                        }
+                    }
+                )
+                .disabled(navigationPrimaryDisabled)
+                .opacity(navigationPrimaryDisabled ? 0.55 : 1)
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
+
             if showTripRecordingControls {
                 HStack(spacing: AppTheme.spacingXS) {
                     recordingControlButton(
@@ -659,10 +863,12 @@ struct MapTabView: View {
             }
 
             if trayDetent == .expanded {
-                trayExpandedContent
-                    .padding(.horizontal, AppTheme.spacingMD)
-                    .padding(.bottom, AppTheme.spacingMD)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                ScrollView(.vertical, showsIndicators: false) {
+                    trayExpandedContent
+                        .padding(.horizontal, AppTheme.spacingMD)
+                        .padding(.bottom, AppTheme.spacingMD)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             } else {
                 Spacer(minLength: 0)
             }
@@ -745,7 +951,7 @@ struct MapTabView: View {
                     .padding(.vertical, AppTheme.spacingXS)
                 }
 
-                Text(coverageSummaryText(for: area))
+                Text(coverageStatusText(for: area))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(AppTheme.textSecondary)
             } else {
@@ -804,13 +1010,17 @@ struct MapTabView: View {
         case .coverage:
             if let area = viewModel.selectedCoverageArea {
                 VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
+                    if navigationHelperVisible {
+                        navigationHelperTray
+                    }
+
                     HStack(spacing: AppTheme.spacingSM) {
                         metricChip(title: "Viewport", value: "\(viewModel.coverageTotalInViewport)", color: AppTheme.accent)
                         metricChip(title: "Remaining mi", value: String(format: "%.1f", area.undrivenLengthMiles), color: streetColor(for: .undriven))
                         metricChip(title: "Total mi", value: String(format: "%.1f", area.driveableLengthMiles), color: AppTheme.textSecondary)
                     }
 
-                    Text(nextCoverageGoalLabel(for: area))
+                    Text(coverageDetailText(for: area))
                         .font(.caption)
                         .foregroundStyle(AppTheme.textSecondary)
                 }
@@ -823,6 +1033,10 @@ struct MapTabView: View {
             }
         case .combined:
             VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
+                if navigationHelperVisible {
+                    navigationHelperTray
+                }
+
                 if viewModel.visibleTrips.isEmpty {
                     Text("Move the map to surface trips over this street layer.")
                         .font(.caption)
@@ -858,6 +1072,275 @@ struct MapTabView: View {
             }
             .padding(.vertical, AppTheme.spacingXS)
         }
+    }
+
+    @ViewBuilder
+    private var navigationHelperTray: some View {
+        VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
+            HStack(spacing: AppTheme.spacingSM) {
+                Text("NAVIGATION HELPER")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.textTertiary)
+                    .tracking(0.8)
+
+                Spacer()
+
+                if navigationController.isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(AppTheme.accent)
+                }
+            }
+
+            if let error = navigationController.errorMessage {
+                errorBanner(error)
+            }
+
+            if let activeTarget = navigationController.activeTarget {
+                navigationActiveTargetCard(activeTarget)
+            } else {
+                navigationEmptyStateCard
+            }
+
+            if !navigationController.suggestions.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: AppTheme.spacingSM) {
+                        ForEach(navigationController.suggestions) { target in
+                            navigationSuggestionCard(target)
+                        }
+                    }
+                    .padding(.vertical, AppTheme.spacingXS)
+                }
+            }
+
+            if let activeTarget = navigationController.activeTarget,
+               let progress = navigationController.progress
+            {
+                navigationProgressPanel(progress: progress, target: activeTarget)
+            }
+        }
+        .padding(.vertical, AppTheme.spacingXS)
+    }
+
+    private var navigationEmptyStateCard: some View {
+        VStack(alignment: .leading, spacing: AppTheme.spacingXS) {
+            Text(navigationCurrentCoordinate == nil ? "Waiting for a GPS fix." : "No target selected.")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(AppTheme.textPrimary)
+            Text(
+                navigationCurrentCoordinate == nil
+                    ? "The helper will rank nearby undriven clusters once the phone has a current position."
+                    : "Use Find Target to rank the best nearby undriven clusters in this coverage area."
+            )
+            .font(.caption)
+            .foregroundStyle(AppTheme.textSecondary)
+        }
+        .padding(AppTheme.spacingMD)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                .fill(AppTheme.panelInset)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                .stroke(AppTheme.panelBorder, lineWidth: 0.8)
+        )
+    }
+
+    private func navigationActiveTargetCard(_ target: CoverageNavigationTarget) -> some View {
+        VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
+            HStack(alignment: .top, spacing: AppTheme.spacingSM) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(target.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.textPrimary)
+                    Text(target.reason)
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+
+                Text("#\(target.rank)")
+                    .font(.caption.weight(.bold).monospacedDigit())
+                    .foregroundStyle(AppTheme.accent)
+                    .padding(.horizontal, AppTheme.spacingSM)
+                    .padding(.vertical, AppTheme.spacingXS)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(AppTheme.accentMuted)
+                    )
+            }
+
+            HStack(spacing: AppTheme.spacingSM) {
+                metricChip(
+                    title: "ETA",
+                    value: navigationDurationLabel(target.etaMinutes),
+                    color: AppTheme.accentWarm
+                )
+                metricChip(
+                    title: "Distance",
+                    value: navigationDistanceLabel(target.distanceFromOriginMiles),
+                    color: AppTheme.accent
+                )
+                metricChip(
+                    title: "Segments",
+                    value: "\(target.undrivenSegmentCount)",
+                    color: streetColor(for: .undriven)
+                )
+            }
+
+            HStack(spacing: AppTheme.spacingSM) {
+                navigationActionButton(
+                    title: "Navigate",
+                    icon: "arrow.turn.up.right",
+                    tint: AppTheme.accentWarm,
+                    disabled: false
+                ) {
+                    _ = navigationController.launchNavigation()
+                }
+
+                navigationActionButton(
+                    title: "Next Cluster",
+                    icon: "point.3.connected.trianglepath.dotted",
+                    tint: AppTheme.accent,
+                    disabled: navigationCurrentCoordinate == nil
+                ) {
+                    Task {
+                        await advanceToNextNavigationTarget()
+                    }
+                }
+            }
+        }
+        .padding(AppTheme.spacingMD)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                .fill(AppTheme.panelInset)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                .stroke(AppTheme.accent.opacity(0.35), lineWidth: 0.8)
+        )
+    }
+
+    private func navigationSuggestionCard(_ target: CoverageNavigationTarget) -> some View {
+        let isActive = target.id == navigationController.activeTarget?.id
+
+        return Button {
+            navigationController.selectTarget(id: target.id)
+        } label: {
+            VStack(alignment: .leading, spacing: AppTheme.spacingXS) {
+                HStack {
+                    Text("#\(target.rank)")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundStyle(isActive ? AppTheme.accent : AppTheme.textTertiary)
+                    Spacer(minLength: 0)
+                    if isActive {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(AppTheme.accent)
+                    }
+                }
+
+                Text(target.title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.textPrimary)
+                    .lineLimit(2)
+
+                Text(target.reason)
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .lineLimit(2)
+
+                Text("\(navigationDistanceLabel(target.distanceFromOriginMiles)) • \(navigationDurationLabel(target.etaMinutes))")
+                    .font(.caption2.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(AppTheme.textTertiary)
+            }
+            .frame(width: 168, alignment: .leading)
+            .padding(AppTheme.spacingSM)
+            .background(
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(isActive ? AppTheme.accentMuted : AppTheme.panelInset)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .stroke(isActive ? AppTheme.accent.opacity(0.7) : AppTheme.panelBorder, lineWidth: 0.8)
+            )
+        }
+        .buttonStyle(.pressable)
+    }
+
+    private func navigationProgressPanel(
+        progress: CoverageNavigationProgress,
+        target: CoverageNavigationTarget
+    ) -> some View {
+        let totalSegmentCount = max(target.undrivenSegmentCount, progress.matchedSegmentCount + progress.remainingSegmentCount)
+
+        return VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
+            HStack(spacing: AppTheme.spacingSM) {
+                metricChip(
+                    title: "Covered",
+                    value: "\(progress.matchedSegmentCount)/\(max(totalSegmentCount, progress.matchedSegmentCount))",
+                    color: AppTheme.success
+                )
+                metricChip(
+                    title: "Local %",
+                    value: String(format: "%.0f%%", progress.completionRatio * 100),
+                    color: progress.likelyComplete ? AppTheme.success : AppTheme.accent
+                )
+                metricChip(
+                    title: "Remain mi",
+                    value: String(format: "%.1f", max(progress.totalLengthMiles - progress.coveredLengthMiles, 0)),
+                    color: AppTheme.warning
+                )
+            }
+
+            Text(navigationProgressMessage(progress: progress))
+                .font(.caption)
+                .foregroundStyle(progress.trackingActive ? AppTheme.textSecondary : AppTheme.accentWarm)
+        }
+        .padding(AppTheme.spacingMD)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                .fill(AppTheme.panelInset)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+                .stroke(progress.likelyComplete ? AppTheme.success.opacity(0.35) : AppTheme.panelBorder, lineWidth: 0.8)
+        )
+    }
+
+    private func navigationActionButton(
+        title: String,
+        icon: String,
+        tint: Color,
+        disabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .bold))
+                Text(title)
+                    .font(.caption2.weight(.semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(tint)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, AppTheme.spacingMD)
+            .padding(.vertical, AppTheme.spacingSM)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(AppTheme.surfacePanel)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(tint.opacity(0.28), lineWidth: 0.9)
+            )
+        }
+        .buttonStyle(.pressable)
+        .disabled(disabled)
+        .opacity(disabled ? 0.55 : 1)
     }
 
     private func trayStatTile(title: String, value: String, tint: Color) -> some View {
@@ -971,30 +1454,21 @@ struct MapTabView: View {
         )
     }
 
-    private func coverageSummaryText(for area: CoverageArea) -> String {
-        let nextGoal = nextCoverageGoal(for: area.coveragePercentage)
-        let milesToGoal = milesToCoverageGoal(area: area, target: nextGoal)
-        return String(
-            format: "Coverage: %.1f%% • Next goal: %.0f%% • Remaining: %.1f mi",
+    private func coverageStatusText(for area: CoverageArea) -> String {
+        String(
+            format: "Coverage: %.1f%% • %d undriven segments • %.1f mi remaining",
             area.coveragePercentage,
-            nextGoal,
-            milesToGoal
+            area.undrivenSegments,
+            area.undrivenLengthMiles
         )
     }
 
-    private func nextCoverageGoalLabel(for area: CoverageArea) -> String {
-        let nextGoal = nextCoverageGoal(for: area.coveragePercentage)
-        let milesToGoal = milesToCoverageGoal(area: area, target: nextGoal)
-        return String(format: "Next goal %.0f%% • %.1f mi remaining", nextGoal, milesToGoal)
-    }
-
-    private func nextCoverageGoal(for percent: Double) -> Double {
-        [50.0, 60.0, 70.0, 80.0, 90.0, 95.0, 100.0].first(where: { $0 > percent }) ?? 100
-    }
-
-    private func milesToCoverageGoal(area: CoverageArea, target: Double) -> Double {
-        let gapPercent = max(target - area.coveragePercentage, 0)
-        return area.driveableLengthMiles * (gapPercent / 100)
+    private func coverageDetailText(for area: CoverageArea) -> String {
+        String(
+            format: "Undriven streets: %d • Remaining driveable distance: %.1f mi",
+            area.undrivenSegments,
+            area.undrivenLengthMiles
+        )
     }
 
     private var filterSheet: some View {
@@ -1235,7 +1709,7 @@ struct MapTabView: View {
         case .locating:
             return "location.circle.fill"
         case .needsPermission:
-            return "location.badge.plus"
+            return "location.circle"
         case .blocked:
             return "location.slash.fill"
         }
@@ -1351,6 +1825,77 @@ struct MapTabView: View {
         viewModel.focus(on: coordinate)
     }
 
+    private func handleNavigationPrimaryAction() async {
+        guard let areaID = viewModel.selectedCoverageAreaID else { return }
+        trayDetent = .expanded
+
+        if navigationController.activeTarget == nil {
+            await fetchNavigationSuggestions(areaID: areaID, preserveActiveSelection: false)
+            return
+        }
+
+        if navigationController.isLikelyComplete {
+            await advanceToNextNavigationTarget()
+            return
+        }
+
+        _ = navigationController.launchNavigation()
+    }
+
+    private func fetchNavigationSuggestions(
+        areaID: String,
+        preserveActiveSelection: Bool
+    ) async {
+        guard let coordinate = navigationCurrentCoordinate else { return }
+        trayDetent = .expanded
+        await navigationController.loadSuggestions(
+            areaID: areaID,
+            origin: coordinate,
+            preserveActiveSelection: preserveActiveSelection
+        )
+        updateNavigationProgress()
+        focusOnActiveNavigationTarget()
+    }
+
+    private func advanceToNextNavigationTarget() async {
+        guard let areaID = viewModel.selectedCoverageAreaID,
+              let coordinate = navigationCurrentCoordinate
+        else {
+            return
+        }
+
+        trayDetent = .expanded
+        await navigationController.advanceToNextTarget(areaID: areaID, origin: coordinate)
+        updateNavigationProgress()
+        focusOnActiveNavigationTarget()
+    }
+
+    private func refreshNavigationSuggestionsIfNeeded() async {
+        guard navigationHelperVisible,
+              let areaID = viewModel.selectedCoverageAreaID,
+              let coordinate = navigationCurrentCoordinate
+        else {
+            return
+        }
+
+        await navigationController.refreshIfNeededOnReturn(areaID: areaID, origin: coordinate)
+        updateNavigationProgress()
+        focusOnActiveNavigationTarget()
+    }
+
+    private func updateNavigationProgress() {
+        navigationController.updateProgress(
+            coverageFeatures: viewModel.coverageFeatures,
+            trackedPathSegments: locationController.trackedPathSegments,
+            isTripRecording: locationController.isTripRecording
+        )
+    }
+
+    private func focusOnActiveNavigationTarget() {
+        guard let activeTarget = navigationController.activeTarget else { return }
+        viewModel.focus(on: activeTarget.bbox, including: navigationCurrentCoordinate)
+    }
+
     private func openAppSettings() {
         guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
         openURL(settingsURL)
@@ -1384,6 +1929,30 @@ struct MapTabView: View {
     private func distanceLabel(_ distance: Double?) -> String {
         guard let distance else { return "-- mi" }
         return String(format: "%.1f mi", distance)
+    }
+
+    private func navigationDistanceLabel(_ distance: Double?) -> String {
+        guard let distance else { return "-- mi" }
+        return String(format: "%.1f mi", distance)
+    }
+
+    private func navigationDurationLabel(_ etaMinutes: Double?) -> String {
+        guard let etaMinutes else { return "-- min" }
+        return "\(Int(etaMinutes.rounded())) min"
+    }
+
+    private func navigationProgressMessage(progress: CoverageNavigationProgress) -> String {
+        if !progress.trackingActive {
+            return progress.hasRecordedPath
+                ? "Local progress is paused until trip recording resumes."
+                : "Drive with trip recording on to estimate when this cluster is likely complete."
+        }
+
+        if progress.likelyComplete {
+            return "This cluster looks mostly covered from the local path. Use Next Cluster to rotate to the next ranked target."
+        }
+
+        return "Local overlap has covered \(progress.matchedSegmentCount) segments so far. Apple Maps still handles the actual turn-by-turn leg."
     }
 
     private func destinationLabel(for trip: TripMapFeature) -> String {

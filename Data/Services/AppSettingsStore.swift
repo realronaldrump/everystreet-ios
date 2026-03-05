@@ -8,6 +8,7 @@ final class AppSettingsStore {
         static let selectedPreset = "selected_date_preset"
         static let customStart = "custom_start_date"
         static let customEnd = "custom_end_date"
+        static let selectedCoverageAreaID = "selected_coverage_area_id"
     }
 
     private static let fixedAPIBaseURL = URL(string: "https://www.everystreet.me")!
@@ -37,5 +38,17 @@ final class AppSettingsStore {
     var customEndDate: Date? {
         get { defaults.object(forKey: Keys.customEnd) as? Date }
         set { defaults.set(newValue, forKey: Keys.customEnd) }
+    }
+
+    var selectedCoverageAreaID: String? {
+        get {
+            guard let value = defaults.string(forKey: Keys.selectedCoverageAreaID) else { return nil }
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        set {
+            let trimmed = newValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+            defaults.set(trimmed?.isEmpty == false ? trimmed : nil, forKey: Keys.selectedCoverageAreaID)
+        }
     }
 }

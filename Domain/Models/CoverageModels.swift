@@ -1,3 +1,4 @@
+import CoreLocation
 import Foundation
 
 enum CoverageStreetStatus: String, CaseIterable, Identifiable {
@@ -118,4 +119,67 @@ struct CoverageMapBundle: Hashable {
     let bbox: MapBoundingBox
     let segmentCount: Int
     let segments: [CoverageMapFeature]
+}
+
+struct CoverageNavigationCoordinate: Hashable, Codable {
+    let latitude: Double
+    let longitude: Double
+
+    var clLocationCoordinate2D: CLLocationCoordinate2D {
+        CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+    }
+}
+
+struct CoverageNavigationSuggestionSet: Hashable {
+    let areaID: String
+    let areaDisplayName: String
+    let generatedAt: Date
+    let origin: CoverageNavigationCoordinate
+    let suggestions: [CoverageNavigationTarget]
+}
+
+struct CoverageNavigationTarget: Identifiable, Hashable {
+    let id: String
+    let rank: Int
+    let title: String
+    let reason: String
+    let destination: CoverageNavigationCoordinate
+    let bbox: MapBoundingBox
+    let segmentIDs: [String]
+    let undrivenSegmentCount: Int
+    let undrivenLengthMiles: Double
+    let distanceFromOriginMiles: Double?
+    let etaMinutes: Double?
+    let score: Double?
+}
+
+struct CoverageNavigationProgress: Equatable {
+    let matchedSegmentIDs: Set<String>
+    let matchedSegmentCount: Int
+    let remainingSegmentCount: Int
+    let coveredLengthMiles: Double
+    let totalLengthMiles: Double
+    let completionRatio: Double
+    let likelyComplete: Bool
+    let trackingActive: Bool
+    let hasRecordedPath: Bool
+
+    static func placeholder(
+        for target: CoverageNavigationTarget,
+        trackingActive: Bool,
+        hasRecordedPath: Bool,
+        preserving current: CoverageNavigationProgress? = nil
+    ) -> CoverageNavigationProgress {
+        CoverageNavigationProgress(
+            matchedSegmentIDs: current?.matchedSegmentIDs ?? [],
+            matchedSegmentCount: current?.matchedSegmentCount ?? 0,
+            remainingSegmentCount: current?.remainingSegmentCount ?? target.undrivenSegmentCount,
+            coveredLengthMiles: current?.coveredLengthMiles ?? 0,
+            totalLengthMiles: max(current?.totalLengthMiles ?? 0, target.undrivenLengthMiles),
+            completionRatio: current?.completionRatio ?? 0,
+            likelyComplete: current?.likelyComplete ?? false,
+            trackingActive: trackingActive,
+            hasRecordedPath: hasRecordedPath
+        )
+    }
 }

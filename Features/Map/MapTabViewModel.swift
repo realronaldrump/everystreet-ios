@@ -45,6 +45,7 @@ enum OverlaySemantic: Hashable {
     case trip(bucket: Int)
     case coverage(status: CoverageStreetStatus)
     case liveTrip
+    case navigation(targetID: String, isActive: Bool)
 }
 
 struct OverlayRenderGroup: Identifiable {
@@ -60,6 +61,7 @@ final class MapTabViewModel {
     private let repository: TripsRepository
     private let coverageRepository: CoverageRepository
     private let coordinateCache: LRUCoordinateCache
+    private let settings: AppSettingsStore
 
     private weak var syncAppModel: AppModel?
     private var lastBaseTripQuery: TripQuery?
@@ -179,10 +181,17 @@ final class MapTabViewModel {
         }
     }
 
-    init(repository: TripsRepository, coverageRepository: CoverageRepository, coordinateCache: LRUCoordinateCache) {
+    init(
+        repository: TripsRepository,
+        coverageRepository: CoverageRepository,
+        coordinateCache: LRUCoordinateCache,
+        settings: AppSettingsStore = .shared
+    ) {
         self.repository = repository
         self.coverageRepository = coverageRepository
         self.coordinateCache = coordinateCache
+        self.settings = settings
+        selectedCoverageAreaID = settings.selectedCoverageAreaID
     }
 
     func load(query: TripQuery, appModel: AppModel) async {
@@ -264,6 +273,7 @@ final class MapTabViewModel {
     func selectCoverageArea(_ areaID: String) async {
         guard selectedCoverageAreaID != areaID else { return }
         selectedCoverageAreaID = areaID
+        settings.selectedCoverageAreaID = areaID
         coverageFeatures = []
         coverageOverlayGroupsByLevel = [:]
         coverageTotalInViewport = 0
@@ -304,6 +314,10 @@ final class MapTabViewModel {
         cameraRevision += 1
         updateVisibleTrips()
         updateCoverageViewportCount()
+    }
+
+    func focus(on boundingBox: MapBoundingBox, including coordinate: CLLocationCoordinate2D?) {
+        applyCamera(for: boundingBox.asTripBoundingBox, including: coordinate)
     }
 
     private var activeTripCoverageAreaID: String? {
@@ -395,8 +409,10 @@ final class MapTabViewModel {
                areas.contains(where: { $0.id == selectedCoverageAreaID })
             {
                 // Keep selected area.
+                settings.selectedCoverageAreaID = selectedCoverageAreaID
             } else {
                 selectedCoverageAreaID = areas.first?.id
+                settings.selectedCoverageAreaID = selectedCoverageAreaID
             }
 
             if let selectedCoverageAreaID {
@@ -410,7 +426,7 @@ final class MapTabViewModel {
     private func loadCoverageAreaDetailIfNeeded(areaID: String, focusCamera: Bool) async {
         if let cached = areaBoundingBoxes[areaID] {
             if focusCamera {
-                applyCamera(for: cached)
+                applyCamera(for: cached, including: nil)
             }
             return
         }
@@ -420,7 +436,7 @@ final class MapTabViewModel {
             if let boundingBox = detail.boundingBox {
                 areaBoundingBoxes[areaID] = boundingBox
                 if focusCamera {
-                    applyCamera(for: boundingBox)
+                    applyCamera(for: boundingBox, including: nil)
                 }
             }
 
@@ -447,17 +463,22 @@ final class MapTabViewModel {
         }
     }
 
-    private func applyCamera(for boundingBox: TripBoundingBox) {
+    private func applyCamera(for boundingBox: TripBoundingBox, including coordinate: CLLocationCoordinate2D?) {
+        let minLat = min(boundingBox.minLat, coordinate?.latitude ?? boundingBox.minLat)
+        let maxLat = max(boundingBox.maxLat, coordinate?.latitude ?? boundingBox.maxLat)
+        let minLon = min(boundingBox.minLon, coordinate?.longitude ?? boundingBox.minLon)
+        let maxLon = max(boundingBox.maxLon, coordinate?.longitude ?? boundingBox.maxLon)
+
         let center = CLLocationCoordinate2D(
-            latitude: (boundingBox.minLat + boundingBox.maxLat) / 2,
-            longitude: (boundingBox.minLon + boundingBox.maxLon) / 2
+            latitude: (minLat + maxLat) / 2,
+            longitude: (minLon + maxLon) / 2
         )
 
         let region = MKCoordinateRegion(
             center: center,
             span: MKCoordinateSpan(
-                latitudeDelta: max((boundingBox.maxLat - boundingBox.minLat) * 1.35, 0.02),
-                longitudeDelta: max((boundingBox.maxLon - boundingBox.minLon) * 1.35, 0.02)
+                latitudeDelta: max((maxLat - minLat) * 1.35, 0.02),
+                longitudeDelta: max((maxLon - minLon) * 1.35, 0.02)
             )
         )
 
@@ -506,6 +527,43 @@ final class MapTabViewModel {
             return groups.filter { $0.semantic == .coverage(status: .undriven) }
         case .undriveable:
             return groups.filter { $0.semantic == .coverage(status: .undriveable) }
+        }
+    }
+
+    func navigationOverlayGroups(
+        suggestions: [CoverageNavigationTarget],
+        activeTargetID: String?
+    ) -> [OverlayRenderGroup] {
+        let level = Self.geometryLevel(for: zoomBucket)
+        let featureByID = Dictionary(uniqueKeysWithValues: coverageFeatures.map { ($0.id, $0) })
+
+        return suggestions.compactMap { suggestion in
+            let polylines = suggestion.segmentIDs.compactMap { segmentID -> MKPolyline? in
+                guard let feature = featureByID[segmentID] else { return nil }
+
+                let cacheKey = "navigation-\(segmentID)-\(level.rawValue)"
+                let coordinates: [CLLocationCoordinate2D]
+                if let cached = coordinateCache.value(for: cacheKey) {
+                    coordinates = cached
+                } else {
+                    let decoded = Polyline6.decode(feature.geom.encodedPath(for: level))
+                    coordinateCache.set(decoded, for: cacheKey)
+                    coordinates = decoded
+                }
+
+                guard coordinates.count > 1 else { return nil }
+                return MKPolyline(coordinates: coordinates, count: coordinates.count)
+            }
+
+            guard !polylines.isEmpty else { return nil }
+            let isActive = suggestion.id == activeTargetID
+
+            return OverlayRenderGroup(
+                id: "navigation-\(suggestion.id)",
+                overlay: MKMultiPolyline(polylines),
+                style: Self.navigationStyle(rank: suggestion.rank, isActive: isActive),
+                semantic: .navigation(targetID: suggestion.id, isActive: isActive)
+            )
         }
     }
 
@@ -659,5 +717,274 @@ final class MapTabViewModel {
             alpha: min(1.0, max(0.72, style.alpha)),
             dashPattern: style.dashPattern
         )
+    }
+
+    private static func navigationStyle(rank: Int, isActive: Bool) -> OverlayLineStyle {
+        if isActive {
+            return OverlayLineStyle(
+                color: UIColor(red: 0.24, green: 0.86, blue: 1.0, alpha: 1),
+                lineWidth: 5.6,
+                alpha: 0.98
+            )
+        }
+
+        let clampedRank = max(rank, 1)
+        return OverlayLineStyle(
+            color: UIColor(red: 0.99, green: 0.81, blue: 0.28, alpha: 1),
+            lineWidth: max(2.0, 3.3 - CGFloat(clampedRank - 1) * 0.35),
+            alpha: max(0.30, 0.52 - CGFloat(clampedRank - 1) * 0.08),
+            dashPattern: [5, 4]
+        )
+    }
+}
+
+protocol MapsLaunching {
+    func openDrivingDirections(for target: CoverageNavigationTarget) -> Bool
+}
+
+struct SystemMapsLauncher: MapsLaunching {
+    func openDrivingDirections(for target: CoverageNavigationTarget) -> Bool {
+        let location = CLLocation(
+            latitude: target.destination.latitude,
+            longitude: target.destination.longitude
+        )
+        let mapItem = MKMapItem(location: location, address: nil)
+        mapItem.name = target.title
+
+        return mapItem.openInMaps(
+            launchOptions: [
+                MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving,
+            ]
+        )
+    }
+}
+
+@MainActor
+@Observable
+final class CoverageNavigationController {
+    @ObservationIgnored
+    private let repository: CoverageRepository
+    @ObservationIgnored
+    private let mapsLauncher: MapsLaunching
+    @ObservationIgnored
+    private let nowProvider: () -> Date
+    @ObservationIgnored
+    private let refreshDistanceMeters: CLLocationDistance
+    @ObservationIgnored
+    private let suggestionMaxAge: TimeInterval
+    @ObservationIgnored
+    private let shortlistLimit: Int
+
+    private var currentAreaID: String?
+    private var lastFetchedOrigin: CLLocation?
+
+    var suggestionSet: CoverageNavigationSuggestionSet?
+    var activeTargetID: String?
+    var progress: CoverageNavigationProgress?
+    var isLoading = false
+    var errorMessage: String?
+
+    init(
+        repository: CoverageRepository,
+        mapsLauncher: MapsLaunching = SystemMapsLauncher(),
+        nowProvider: @escaping () -> Date = { .now },
+        refreshDistanceMeters: CLLocationDistance = 250,
+        suggestionMaxAge: TimeInterval = 5 * 60,
+        shortlistLimit: Int = 3
+    ) {
+        self.repository = repository
+        self.mapsLauncher = mapsLauncher
+        self.nowProvider = nowProvider
+        self.refreshDistanceMeters = refreshDistanceMeters
+        self.suggestionMaxAge = suggestionMaxAge
+        self.shortlistLimit = shortlistLimit
+    }
+
+    var suggestions: [CoverageNavigationTarget] {
+        suggestionSet?.suggestions ?? []
+    }
+
+    var activeTarget: CoverageNavigationTarget? {
+        guard let suggestionSet else { return nil }
+
+        if let activeTargetID,
+           let target = suggestionSet.suggestions.first(where: { $0.id == activeTargetID })
+        {
+            return target
+        }
+
+        return suggestionSet.suggestions.first
+    }
+
+    var alternateTargets: [CoverageNavigationTarget] {
+        suggestions.filter { $0.id != activeTarget?.id }
+    }
+
+    var hasSuggestions: Bool {
+        !suggestions.isEmpty
+    }
+
+    var isLikelyComplete: Bool {
+        progress?.likelyComplete == true
+    }
+
+    func syncContext(selectedLayer: MapLayerMode, areaID: String?) {
+        guard selectedLayer != .trips, let areaID else {
+            clearSession(resetArea: true)
+            return
+        }
+
+        if currentAreaID != areaID {
+            clearSession(resetArea: false)
+            currentAreaID = areaID
+        }
+    }
+
+    func clearSession(resetArea: Bool = false) {
+        suggestionSet = nil
+        activeTargetID = nil
+        progress = nil
+        errorMessage = nil
+        lastFetchedOrigin = nil
+
+        if resetArea {
+            currentAreaID = nil
+        }
+    }
+
+    func loadSuggestions(
+        areaID: String,
+        origin: CLLocationCoordinate2D,
+        preserveActiveSelection: Bool = true
+    ) async {
+        guard !isLoading else { return }
+        currentAreaID = areaID
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+
+        do {
+            let suggestionSet = try await repository.loadNavigationSuggestions(
+                areaID: areaID,
+                origin: origin,
+                limit: shortlistLimit
+            )
+            applySuggestions(suggestionSet, preserveActiveSelection: preserveActiveSelection)
+            lastFetchedOrigin = CLLocation(latitude: origin.latitude, longitude: origin.longitude)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func refreshIfNeededOnReturn(
+        areaID: String,
+        origin: CLLocationCoordinate2D
+    ) async {
+        guard currentAreaID == areaID, let suggestionSet else { return }
+
+        let movedEnough: Bool
+        if let lastFetchedOrigin {
+            let currentLocation = CLLocation(latitude: origin.latitude, longitude: origin.longitude)
+            movedEnough = currentLocation.distance(from: lastFetchedOrigin) >= refreshDistanceMeters
+        } else {
+            movedEnough = false
+        }
+
+        let isStale = nowProvider().timeIntervalSince(suggestionSet.generatedAt) >= suggestionMaxAge
+
+        guard movedEnough || isStale || isLikelyComplete else { return }
+        await loadSuggestions(areaID: areaID, origin: origin, preserveActiveSelection: !isLikelyComplete)
+    }
+
+    func selectTarget(id: String) {
+        guard suggestions.contains(where: { $0.id == id }) else { return }
+        activeTargetID = id
+    }
+
+    func advanceToNextTarget(
+        areaID: String,
+        origin: CLLocationCoordinate2D
+    ) async {
+        guard !suggestions.isEmpty else {
+            await loadSuggestions(areaID: areaID, origin: origin, preserveActiveSelection: false)
+            return
+        }
+
+        if let activeTargetID,
+           let index = suggestions.firstIndex(where: { $0.id == activeTargetID }),
+           suggestions.indices.contains(index + 1)
+        {
+            self.activeTargetID = suggestions[index + 1].id
+            return
+        }
+
+        await loadSuggestions(areaID: areaID, origin: origin, preserveActiveSelection: false)
+    }
+
+    @discardableResult
+    func launchNavigation() -> Bool {
+        guard let activeTarget else {
+            errorMessage = "No target selected."
+            return false
+        }
+
+        let didLaunch = mapsLauncher.openDrivingDirections(for: activeTarget)
+        if !didLaunch {
+            errorMessage = "Unable to open Apple Maps."
+        }
+        return didLaunch
+    }
+
+    func updateProgress(
+        coverageFeatures: [CoverageMapFeature],
+        trackedPathSegments: [[CLLocationCoordinate2D]],
+        isTripRecording: Bool
+    ) {
+        guard let activeTarget else {
+            progress = nil
+            return
+        }
+
+        let hasRecordedPath = trackedPathSegments.contains { $0.count > 0 }
+        guard isTripRecording, hasRecordedPath else {
+            progress = .placeholder(
+                for: activeTarget,
+                trackingActive: false,
+                hasRecordedPath: hasRecordedPath,
+                preserving: progress
+            )
+            return
+        }
+
+        progress = MapGeometry.evaluateNavigationProgress(
+            target: activeTarget,
+            coverageFeatures: coverageFeatures,
+            trackedPathSegments: trackedPathSegments
+        )
+    }
+
+    private func applySuggestions(
+        _ suggestionSet: CoverageNavigationSuggestionSet,
+        preserveActiveSelection: Bool
+    ) {
+        self.suggestionSet = suggestionSet
+
+        guard !suggestionSet.suggestions.isEmpty else {
+            activeTargetID = nil
+            progress = nil
+            errorMessage = "No undriven clusters found near your current position."
+            return
+        }
+
+        errorMessage = nil
+
+        if preserveActiveSelection,
+           let activeTargetID,
+           suggestionSet.suggestions.contains(where: { $0.id == activeTargetID })
+        {
+            self.activeTargetID = activeTargetID
+        } else {
+            activeTargetID = suggestionSet.suggestions.first?.id
+        }
     }
 }
