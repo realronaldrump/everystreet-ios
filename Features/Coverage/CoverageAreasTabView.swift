@@ -375,6 +375,8 @@ private struct CoverageAreaMapPanel: View {
                     showsUserLocation: false,
                     overlayGroups: viewModel.activeOverlayGroups,
                     annotationItems: [],
+                    selectableSegments: [],
+                    onSelectableSegmentTap: { _ in },
                     onRegionChange: { region in
                         viewModel.update(region: region)
                     }

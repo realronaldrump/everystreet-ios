@@ -284,6 +284,26 @@ final class CoverageNavigationControllerTests: XCTestCase {
         XCTAssertEqual(launcher.launchedTargetIDs, ["cluster-a"])
     }
 
+    func testLaunchNavigationToTappedSegmentUsesMapsLauncher() {
+        let repository = MockCoverageRepository()
+        let launcher = MockMapsLauncher()
+        let controller = CoverageNavigationController(repository: repository, mapsLauncher: launcher)
+        let segment = MapSelectableCoverageSegment(
+            id: "seg-200",
+            name: "Mitchell Avenue",
+            midpoint: CLLocationCoordinate2D(latitude: 31.55, longitude: -97.14),
+            coordinates: [
+                CLLocationCoordinate2D(latitude: 31.5498, longitude: -97.1403),
+                CLLocationCoordinate2D(latitude: 31.5502, longitude: -97.1397),
+            ]
+        )
+
+        let didLaunch = controller.launchNavigation(to: segment)
+
+        XCTAssertTrue(didLaunch)
+        XCTAssertEqual(launcher.directLaunchNames, ["Mitchell Avenue"])
+    }
+
     private func makeSuggestionSet(ids: [String], generatedAt: Date) -> CoverageNavigationSuggestionSet {
         CoverageNavigationSuggestionSet(
             areaID: "area-1",
@@ -378,9 +398,15 @@ final class CoverageNavigationControllerTests: XCTestCase {
 
     private final class MockMapsLauncher: MapsLaunching {
         var launchedTargetIDs: [String] = []
+        var directLaunchNames: [String] = []
 
         func openDrivingDirections(for target: CoverageNavigationTarget) -> Bool {
             launchedTargetIDs.append(target.id)
+            return true
+        }
+
+        func openDrivingDirections(to coordinate: CLLocationCoordinate2D, name: String) -> Bool {
+            directLaunchNames.append(name)
             return true
         }
     }

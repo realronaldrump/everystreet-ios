@@ -55,6 +55,20 @@ struct OverlayRenderGroup: Identifiable {
     let semantic: OverlaySemantic
 }
 
+struct MapSelectableCoverageSegment: Identifiable {
+    let id: String
+    let name: String?
+    let midpoint: CLLocationCoordinate2D
+    let coordinates: [CLLocationCoordinate2D]
+
+    var title: String {
+        if let name, !name.isEmpty {
+            return name
+        }
+        return "Undriven street"
+    }
+}
+
 @MainActor
 @Observable
 final class MapTabViewModel {
@@ -318,6 +332,35 @@ final class MapTabViewModel {
 
     func focus(on boundingBox: MapBoundingBox, including coordinate: CLLocationCoordinate2D?) {
         applyCamera(for: boundingBox.asTripBoundingBox, including: coordinate)
+    }
+
+    func selectableUndrivenSegments() -> [MapSelectableCoverageSegment] {
+        let visibleBox = MapGeometry.boundingBox(for: currentRegion).expanded(by: 0.10)
+
+        return coverageFeatures.compactMap { feature in
+            guard feature.status == .undriven else { return nil }
+            guard feature.bbox.asTripBoundingBox.intersects(visibleBox) else { return nil }
+
+            let cacheKey = "coverage-selectable-\(feature.id)"
+            let coordinates: [CLLocationCoordinate2D]
+            if let cached = coordinateCache.value(for: cacheKey) {
+                coordinates = cached
+            } else {
+                let decoded = Polyline6.decode(feature.geom.full)
+                coordinateCache.set(decoded, for: cacheKey)
+                coordinates = decoded
+            }
+
+            guard coordinates.count > 1 else { return nil }
+            guard let midpoint = Self.midpoint(for: coordinates) else { return nil }
+
+            return MapSelectableCoverageSegment(
+                id: feature.id,
+                name: feature.name,
+                midpoint: midpoint,
+                coordinates: coordinates
+            )
+        }
     }
 
     private var activeTripCoverageAreaID: String? {
@@ -736,20 +779,44 @@ final class MapTabViewModel {
             dashPattern: [5, 4]
         )
     }
+
+    private static func midpoint(for coordinates: [CLLocationCoordinate2D]) -> CLLocationCoordinate2D? {
+        guard !coordinates.isEmpty else { return nil }
+        if coordinates.count == 1 {
+            return coordinates[0]
+        }
+
+        let middleIndex = coordinates.count / 2
+        if coordinates.count.isMultiple(of: 2) {
+            let first = coordinates[max(middleIndex - 1, 0)]
+            let second = coordinates[middleIndex]
+            return CLLocationCoordinate2D(
+                latitude: (first.latitude + second.latitude) / 2,
+                longitude: (first.longitude + second.longitude) / 2
+            )
+        }
+
+        return coordinates[middleIndex]
+    }
 }
 
 protocol MapsLaunching {
     func openDrivingDirections(for target: CoverageNavigationTarget) -> Bool
+    func openDrivingDirections(to coordinate: CLLocationCoordinate2D, name: String) -> Bool
 }
 
 struct SystemMapsLauncher: MapsLaunching {
     func openDrivingDirections(for target: CoverageNavigationTarget) -> Bool {
+        openDrivingDirections(to: target.destination.clLocationCoordinate2D, name: target.title)
+    }
+
+    func openDrivingDirections(to coordinate: CLLocationCoordinate2D, name: String) -> Bool {
         let location = CLLocation(
-            latitude: target.destination.latitude,
-            longitude: target.destination.longitude
+            latitude: coordinate.latitude,
+            longitude: coordinate.longitude
         )
         let mapItem = MKMapItem(location: location, address: nil)
-        mapItem.name = target.title
+        mapItem.name = name
 
         return mapItem.openInMaps(
             launchOptions: [
@@ -931,7 +998,25 @@ final class CoverageNavigationController {
         let didLaunch = mapsLauncher.openDrivingDirections(for: activeTarget)
         if !didLaunch {
             errorMessage = "Unable to open Apple Maps."
+        } else {
+            errorMessage = nil
         }
+        return didLaunch
+    }
+
+    @discardableResult
+    func launchNavigation(to segment: MapSelectableCoverageSegment) -> Bool {
+        let didLaunch = mapsLauncher.openDrivingDirections(
+            to: segment.midpoint,
+            name: segment.title
+        )
+
+        if !didLaunch {
+            errorMessage = "Unable to open Apple Maps."
+        } else {
+            errorMessage = nil
+        }
+
         return didLaunch
     }
 

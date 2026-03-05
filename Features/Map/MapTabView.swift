@@ -40,10 +40,15 @@ struct OverlayMKMapView: UIViewRepresentable {
     let showsUserLocation: Bool
     let overlayGroups: [OverlayRenderGroup]
     let annotationItems: [MapAnnotationItem]
+    let selectableSegments: [MapSelectableCoverageSegment]
+    let onSelectableSegmentTap: (MapSelectableCoverageSegment) -> Void
     let onRegionChange: (MKCoordinateRegion) -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onRegionChange: onRegionChange)
+        Coordinator(
+            onRegionChange: onRegionChange,
+            onSelectableSegmentTap: onSelectableSegmentTap
+        )
     }
 
     func makeUIView(context: Context) -> MKMapView {
@@ -64,6 +69,13 @@ struct OverlayMKMapView: UIViewRepresentable {
         mapView.setRegion(region, animated: false)
         context.coordinator.apply(groups: overlayGroups, to: mapView)
         context.coordinator.apply(annotationItems: annotationItems, to: mapView)
+        context.coordinator.selectableSegments = selectableSegments
+        let tapRecognizer = UITapGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handleMapTap(_:))
+        )
+        tapRecognizer.cancelsTouchesInView = false
+        mapView.addGestureRecognizer(tapRecognizer)
         return mapView
     }
 
@@ -74,6 +86,7 @@ struct OverlayMKMapView: UIViewRepresentable {
 
         context.coordinator.apply(groups: overlayGroups, to: uiView)
         context.coordinator.apply(annotationItems: annotationItems, to: uiView)
+        context.coordinator.selectableSegments = selectableSegments
         context.coordinator.apply(region: region, revision: regionRevision, to: uiView)
     }
 
@@ -100,12 +113,18 @@ struct OverlayMKMapView: UIViewRepresentable {
         }
 
         private let onRegionChange: (MKCoordinateRegion) -> Void
+        private let onSelectableSegmentTap: (MapSelectableCoverageSegment) -> Void
         private var styleByOverlayID: [ObjectIdentifier: OverlayLineStyle] = [:]
         private var lastRegionRevision = -1
         private var suppressRegionCallback = false
+        fileprivate var selectableSegments: [MapSelectableCoverageSegment] = []
 
-        init(onRegionChange: @escaping (MKCoordinateRegion) -> Void) {
+        init(
+            onRegionChange: @escaping (MKCoordinateRegion) -> Void,
+            onSelectableSegmentTap: @escaping (MapSelectableCoverageSegment) -> Void
+        ) {
             self.onRegionChange = onRegionChange
+            self.onSelectableSegmentTap = onSelectableSegmentTap
         }
 
         func apply(groups: [OverlayRenderGroup], to mapView: MKMapView) {
@@ -179,6 +198,82 @@ struct OverlayMKMapView: UIViewRepresentable {
             guard !suppressRegionCallback else { return }
             onRegionChange(mapView.region)
         }
+
+        @objc
+        func handleMapTap(_ gesture: UITapGestureRecognizer) {
+            guard gesture.state == .ended else { return }
+            guard let mapView = gesture.view as? MKMapView else { return }
+
+            let point = gesture.location(in: mapView)
+            guard let matchedSegment = nearestSelectableSegment(to: point, in: mapView) else { return }
+            onSelectableSegmentTap(matchedSegment)
+        }
+
+        private func nearestSelectableSegment(
+            to point: CGPoint,
+            in mapView: MKMapView
+        ) -> MapSelectableCoverageSegment? {
+            let tolerance: CGFloat = 22
+
+            var bestMatch: (segment: MapSelectableCoverageSegment, distance: CGFloat)?
+            for segment in selectableSegments {
+                let screenPoints = segment.coordinates.map { coordinate in
+                    mapView.convert(coordinate, toPointTo: mapView)
+                }
+
+                let distance = polylineDistance(from: point, to: screenPoints)
+                guard distance <= tolerance else { continue }
+
+                if let currentBest = bestMatch {
+                    if distance < currentBest.distance {
+                        bestMatch = (segment, distance)
+                    }
+                } else {
+                    bestMatch = (segment, distance)
+                }
+            }
+
+            return bestMatch?.segment
+        }
+
+        private func polylineDistance(
+            from point: CGPoint,
+            to polyline: [CGPoint]
+        ) -> CGFloat {
+            guard let first = polyline.first else { return .greatestFiniteMagnitude }
+            guard polyline.count > 1 else { return pointDistance(point, first) }
+
+            return zip(polyline, polyline.dropFirst()).reduce(.greatestFiniteMagnitude) { current, pair in
+                min(current, pointToSegmentDistance(point, pair.0, pair.1))
+            }
+        }
+
+        private func pointToSegmentDistance(
+            _ point: CGPoint,
+            _ segmentStart: CGPoint,
+            _ segmentEnd: CGPoint
+        ) -> CGFloat {
+            let dx = segmentEnd.x - segmentStart.x
+            let dy = segmentEnd.y - segmentStart.y
+
+            guard dx != 0 || dy != 0 else {
+                return pointDistance(point, segmentStart)
+            }
+
+            let projection = ((point.x - segmentStart.x) * dx + (point.y - segmentStart.y) * dy) / ((dx * dx) + (dy * dy))
+            let clamped = min(1, max(0, projection))
+            let projected = CGPoint(
+                x: segmentStart.x + clamped * dx,
+                y: segmentStart.y + clamped * dy
+            )
+            return pointDistance(point, projected)
+        }
+
+        private func pointDistance(_ lhs: CGPoint, _ rhs: CGPoint) -> CGFloat {
+            let dx = lhs.x - rhs.x
+            let dy = lhs.y - rhs.y
+            return sqrt((dx * dx) + (dy * dy))
+        }
     }
 }
 
@@ -223,6 +318,10 @@ struct MapTabView: View {
                 showsUserLocation: locationController.canDisplayUserLocation,
                 overlayGroups: mapOverlayGroups,
                 annotationItems: navigationAnnotationItems,
+                selectableSegments: selectableUndrivenSegments,
+                onSelectableSegmentTap: { segment in
+                    handleUndrivenSegmentTap(segment)
+                },
                 onRegionChange: { viewModel.update(region: $0) }
             )
             .ignoresSafeArea()
@@ -537,6 +636,11 @@ struct MapTabView: View {
                 tintColor: UIColor(AppTheme.accentWarm)
             ),
         ]
+    }
+
+    private var selectableUndrivenSegments: [MapSelectableCoverageSegment] {
+        guard viewModel.selectedLayer != .trips else { return [] }
+        return viewModel.selectableUndrivenSegments()
     }
 
     private var navigationHelperVisible: Bool {
@@ -1889,6 +1993,11 @@ struct MapTabView: View {
             trackedPathSegments: locationController.trackedPathSegments,
             isTripRecording: locationController.isTripRecording
         )
+    }
+
+    private func handleUndrivenSegmentTap(_ segment: MapSelectableCoverageSegment) {
+        trayDetent = .expanded
+        _ = navigationController.launchNavigation(to: segment)
     }
 
     private func focusOnActiveNavigationTarget() {
