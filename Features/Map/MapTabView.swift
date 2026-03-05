@@ -237,7 +237,7 @@ struct MapTabView: View {
                     }
                 } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: layer == .trips ? "car.rear.waves.up" : "point.topleft.down.to.point.bottomright.curvepath")
+                        Image(systemName: layerIcon(for: layer))
                             .font(.system(size: 11, weight: .semibold))
                         Text(layer.shortTitle)
                             .font(.caption.weight(.semibold))
@@ -262,6 +262,17 @@ struct MapTabView: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(AppTheme.panelBorder, lineWidth: 0.8)
         )
+    }
+
+    private func layerIcon(for layer: MapLayerMode) -> String {
+        switch layer {
+        case .trips:
+            return "car.rear.waves.up"
+        case .coverage:
+            return "point.topleft.down.to.point.bottomright.curvepath"
+        case .combined:
+            return "square.3.layers.3d.top.filled"
+        }
     }
 
     private func controlButton(
@@ -334,37 +345,28 @@ struct MapTabView: View {
         case .failed:
             return ("exclamationmark.triangle.fill", "ERROR", AppTheme.error, AppTheme.error.opacity(0.2))
         case .idle:
-            return ("checkmark.seal.fill", "LIVE", AppTheme.success, AppTheme.success.opacity(0.16))
+            return ("checkmark.seal.fill", "HISTORY", AppTheme.success, AppTheme.success.opacity(0.16))
         }
     }
 
     private var mapLegend: some View {
         Group {
-            if viewModel.selectedLayer == .trips {
+            switch viewModel.selectedLayer {
+            case .trips:
                 tripLegend
-            } else {
+            case .coverage:
                 coverageLegend
+            case .combined:
+                combinedLegend
             }
         }
     }
 
     private var tripLegend: some View {
         HStack(spacing: AppTheme.spacingSM) {
-            Text("Older")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(AppTheme.textTertiary)
+            legendSwatch(label: "Trips", color: AppTheme.routeRecent, width: 18)
 
-            RoundedRectangle(cornerRadius: 2, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [AppTheme.routeOld, AppTheme.routeRecent],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .frame(height: 4)
-
-            Text("Recent")
+            Text("Historical Trips")
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(AppTheme.textSecondary)
         }
@@ -378,6 +380,17 @@ struct MapTabView: View {
             legendSwatch(label: "Driven", color: streetColor(for: .driven), width: 18)
             legendSwatch(label: "Undriven", color: streetColor(for: .undriven), width: 16)
             legendSwatch(label: "Undriveable", color: streetColor(for: .undriveable), width: 12, dashed: true)
+        }
+        .padding(.horizontal, AppTheme.spacingMD)
+        .padding(.vertical, AppTheme.spacingSM)
+        .glassCard(padding: 0, cornerRadius: AppTheme.radiusMD)
+    }
+
+    private var combinedLegend: some View {
+        HStack(spacing: AppTheme.spacingSM) {
+            legendSwatch(label: "Trips", color: AppTheme.routeRecent, width: 14)
+            legendSwatch(label: "Driven", color: streetColor(for: .driven), width: 14)
+            legendSwatch(label: "Undriven", color: streetColor(for: .undriven), width: 12)
         }
         .padding(.horizontal, AppTheme.spacingMD)
         .padding(.vertical, AppTheme.spacingSM)
@@ -401,6 +414,36 @@ struct MapTabView: View {
             Text(label)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(AppTheme.textSecondary)
+        }
+    }
+
+    private var primaryStreetFilters: [CoverageStreetFilter] {
+        [.all, .driven, .undriven]
+    }
+
+    private var streetLayerQuickFilter: some View {
+        HStack(spacing: AppTheme.spacingSM) {
+            ForEach(primaryStreetFilters) { filter in
+                let active = viewModel.coverageFilter == filter
+                Button {
+                    viewModel.setCoverageFilter(filter)
+                } label: {
+                    Text(filter.title)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(active ? Color.white : AppTheme.textSecondary)
+                        .padding(.horizontal, AppTheme.spacingSM)
+                        .padding(.vertical, AppTheme.spacingXS + 2)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(active ? AppTheme.accent : AppTheme.panelInset)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(active ? AppTheme.accent.opacity(0.7) : AppTheme.panelBorder, lineWidth: 0.8)
+                        )
+                }
+                .buttonStyle(.pressable)
+            }
         }
     }
 
@@ -524,8 +567,8 @@ struct MapTabView: View {
                 .padding(.vertical, AppTheme.spacingXS)
             }
 
-            Text(tripMilestoneText)
-                .font(.caption.weight(.medium))
+            Text(tripSummaryText)
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(AppTheme.textSecondary)
         case .coverage:
             if let area = viewModel.selectedCoverageArea {
@@ -538,11 +581,32 @@ struct MapTabView: View {
                     .padding(.vertical, AppTheme.spacingXS)
                 }
 
-                Text(coverageMilestoneText(for: area))
-                    .font(.caption.weight(.medium))
+                Text(coverageSummaryText(for: area))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(AppTheme.textSecondary)
             } else {
-                Text("Pick a coverage area in Filters to start your sweep.")
+                Text("Select coverage area in Filters.")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.textSecondary)
+            }
+        case .combined:
+            if let area = viewModel.selectedCoverageArea {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: AppTheme.spacingSM) {
+                        trayStatTile(title: "Trips", value: "\(viewModel.visibleTrips.count)", tint: AppTheme.routeRecent)
+                        trayStatTile(title: "Streets", value: "\(viewModel.coverageTotalInViewport)", tint: AppTheme.accent)
+                        trayStatTile(title: "Coverage", value: String(format: "%.1f%%", area.coveragePercentage), tint: AppTheme.success)
+                    }
+                    .padding(.vertical, AppTheme.spacingXS)
+                }
+
+                streetLayerQuickFilter
+
+                Text("Trips: \(viewModel.visibleTrips.count) • Streets: \(viewModel.coverageTotalInViewport)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.textSecondary)
+            } else {
+                Text("Select coverage area in Filters.")
                     .font(.caption)
                     .foregroundStyle(AppTheme.textSecondary)
             }
@@ -582,7 +646,7 @@ struct MapTabView: View {
                         metricChip(title: "Total mi", value: String(format: "%.1f", area.driveableLengthMiles), color: AppTheme.textSecondary)
                     }
 
-                    Text("\(area.displayName): keep targeting orange streets to push toward the next milestone.")
+                    Text(nextCoverageGoalLabel(for: area))
                         .font(.caption)
                         .foregroundStyle(AppTheme.textSecondary)
                 }
@@ -593,6 +657,42 @@ struct MapTabView: View {
                     .foregroundStyle(AppTheme.textSecondary)
                     .padding(.vertical, AppTheme.spacingXS)
             }
+        case .combined:
+            VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
+                if viewModel.visibleTrips.isEmpty {
+                    Text("Move the map to surface trips over this street layer.")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .padding(.vertical, AppTheme.spacingXS)
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: AppTheme.spacingSM) {
+                            ForEach(viewModel.visibleTrips.prefix(16)) { trip in
+                                NavigationLink {
+                                    TripDetailView(tripID: trip.id, repository: repository)
+                                } label: {
+                                    tripCard(trip)
+                                }
+                                .buttonStyle(.pressable)
+                            }
+                        }
+                        .padding(.vertical, AppTheme.spacingXS)
+                    }
+                }
+
+                if let area = viewModel.selectedCoverageArea {
+                    HStack(spacing: AppTheme.spacingSM) {
+                        metricChip(title: "Area", value: area.displayName, color: AppTheme.accent)
+                        metricChip(title: "Driven", value: "\(viewModel.coverageCounts.driven)", color: streetColor(for: .driven))
+                        metricChip(title: "Undriven", value: "\(viewModel.coverageCounts.undriven)", color: streetColor(for: .undriven))
+                    }
+                } else {
+                    Text("Select coverage area in Filters.")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.textSecondary)
+                }
+            }
+            .padding(.vertical, AppTheme.spacingXS)
         }
     }
 
@@ -622,9 +722,11 @@ struct MapTabView: View {
     private var trayTitle: String {
         switch viewModel.selectedLayer {
         case .trips:
-            return "Trip Command Deck"
+            return "Trips"
         case .coverage:
-            return "Coverage Command Deck"
+            return "Coverage"
+        case .combined:
+            return "Combined"
         }
     }
 
@@ -634,6 +736,8 @@ struct MapTabView: View {
             return "\(viewModel.visibleTrips.count) visible routes"
         case .coverage:
             return "\(viewModel.visibleCoverageSegments.count) visible streets"
+        case .combined:
+            return "\(viewModel.visibleTrips.count) trips • \(viewModel.coverageTotalInViewport) streets"
         }
     }
 
@@ -671,6 +775,11 @@ struct MapTabView: View {
                 return "\(area.displayName) • \(String(format: "%.1f", area.coveragePercentage))% complete"
             }
             return "Select a coverage area"
+        case .combined:
+            if let area = viewModel.selectedCoverageArea {
+                return "Trips over \(area.displayName)"
+            }
+            return "Trips + street network"
         }
     }
 
@@ -680,6 +789,8 @@ struct MapTabView: View {
             return "\(viewModel.visibleTrips.count) visible • \(todayTripsCount) today • \(String(format: "%.1f", milesThisWeek)) mi this week"
         case .coverage:
             return "\(viewModel.coverageTotalInViewport) segments in viewport"
+        case .combined:
+            return "\(viewModel.visibleTrips.count) trips • \(viewModel.coverageTotalInViewport) segments • street layer: \(viewModel.coverageFilter.title)"
         }
     }
 
@@ -696,37 +807,40 @@ struct MapTabView: View {
             .reduce(0) { $0 + ($1.distanceMiles ?? 0) }
     }
 
-    private var tripMilestoneText: String {
-        if todayTripsCount >= 5 {
-            return "High-output day. You logged \(todayTripsCount) drives today."
-        }
-
-        if milesThisWeek >= 120 {
-            return "Strong week: \(String(format: "%.0f", milesThisWeek)) miles already logged."
-        }
-
-        if let visibleLongest = viewModel.visibleTrips.compactMap(\.distanceMiles).max() {
-            return "Longest visible route is \(String(format: "%.1f", visibleLongest)) mi."
-        }
-
-        return "Pan into your frequent zones to keep uncovering patterns."
+    private var tripSummaryText: String {
+        let longestVisible = viewModel.visibleTrips.compactMap(\.distanceMiles).max() ?? 0
+        return String(
+            format: "Trips today: %d • Week miles: %.1f • Longest visible: %.1f mi",
+            todayTripsCount,
+            milesThisWeek,
+            longestVisible
+        )
     }
 
-    private func coverageMilestoneText(for area: CoverageArea) -> String {
-        let nextGoal = [50.0, 60.0, 70.0, 80.0, 90.0].first(where: { $0 > area.coveragePercentage })
-
-        guard let nextGoal else {
-            return "\(area.displayName) is in elite territory. Keep maintenance passes tight."
-        }
-
-        let gapPercent = max(nextGoal - area.coveragePercentage, 0)
-        let milesToGoal = area.driveableLengthMiles * (gapPercent / 100)
+    private func coverageSummaryText(for area: CoverageArea) -> String {
+        let nextGoal = nextCoverageGoal(for: area.coveragePercentage)
+        let milesToGoal = milesToCoverageGoal(area: area, target: nextGoal)
         return String(
-            format: "%.1f mi to reach %.0f%% in %@.",
-            milesToGoal,
+            format: "Coverage: %.1f%% • Next goal: %.0f%% • Remaining: %.1f mi",
+            area.coveragePercentage,
             nextGoal,
-            area.displayName
+            milesToGoal
         )
+    }
+
+    private func nextCoverageGoalLabel(for area: CoverageArea) -> String {
+        let nextGoal = nextCoverageGoal(for: area.coveragePercentage)
+        let milesToGoal = milesToCoverageGoal(area: area, target: nextGoal)
+        return String(format: "Next goal %.0f%% • %.1f mi remaining", nextGoal, milesToGoal)
+    }
+
+    private func nextCoverageGoal(for percent: Double) -> Double {
+        [50.0, 60.0, 70.0, 80.0, 90.0, 95.0, 100.0].first(where: { $0 > percent }) ?? 100
+    }
+
+    private func milesToCoverageGoal(area: CoverageArea, target: Double) -> Double {
+        let gapPercent = max(target - area.coveragePercentage, 0)
+        return area.driveableLengthMiles * (gapPercent / 100)
     }
 
     private var filterSheet: some View {
@@ -736,7 +850,7 @@ struct MapTabView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: AppTheme.spacingXL) {
-                        if viewModel.selectedLayer == .trips {
+                        if viewModel.selectedLayer == .trips || viewModel.selectedLayer == .combined {
                             GlobalFilterBar(appModel: appModel, compact: false) {
                                 Task {
                                     await viewModel.load(query: appModel.activeQuery, appModel: appModel)
@@ -744,7 +858,7 @@ struct MapTabView: View {
                             }
                         }
 
-                        if viewModel.selectedLayer == .coverage {
+                        if viewModel.selectedLayer == .coverage || viewModel.selectedLayer == .combined {
                             coverageFilterControls
                         }
                     }
@@ -960,6 +1074,9 @@ struct MapTabView: View {
             return appModel.selectedIMEI != nil || appModel.selectedPreset != .sevenDays
         case .coverage:
             return viewModel.coverageFilter != .all
+        case .combined:
+            let tripFilters = appModel.selectedIMEI != nil || appModel.selectedPreset != .sevenDays
+            return tripFilters || viewModel.coverageFilter != .all
         }
     }
 

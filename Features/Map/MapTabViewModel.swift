@@ -6,6 +6,7 @@ import UIKit
 enum MapLayerMode: String, CaseIterable, Identifiable {
     case trips
     case coverage
+    case combined
 
     var id: String { rawValue }
 
@@ -13,6 +14,7 @@ enum MapLayerMode: String, CaseIterable, Identifiable {
         switch self {
         case .trips: "Trips"
         case .coverage: "Coverage Streets"
+        case .combined: "Trips + Coverage"
         }
     }
 
@@ -20,6 +22,7 @@ enum MapLayerMode: String, CaseIterable, Identifiable {
         switch self {
         case .trips: "Trips"
         case .coverage: "Coverage"
+        case .combined: "Blend"
         }
     }
 }
@@ -119,11 +122,25 @@ final class MapTabViewModel {
     }
 
     var isCurrentLayerLoading: Bool {
-        selectedLayer == .trips ? isLoading : isCoverageLoading
+        switch selectedLayer {
+        case .trips:
+            return isLoading
+        case .coverage:
+            return isCoverageLoading
+        case .combined:
+            return isLoading || isCoverageLoading
+        }
     }
 
     var currentLayerErrorMessage: String? {
-        selectedLayer == .trips ? errorMessage : coverageErrorMessage
+        switch selectedLayer {
+        case .trips:
+            return errorMessage
+        case .coverage:
+            return coverageErrorMessage
+        case .combined:
+            return errorMessage ?? coverageErrorMessage
+        }
     }
 
     var activeOverlayGroups: [OverlayRenderGroup] {
@@ -132,17 +149,25 @@ final class MapTabViewModel {
         case .trips:
             return tripOverlayGroupsByLevel[level] ?? []
         case .coverage:
-            let groups = coverageOverlayGroupsByLevel[level] ?? []
-            switch coverageFilter {
-            case .all:
-                return groups
-            case .driven:
-                return groups.filter { $0.semantic == OverlaySemantic.coverage(status: .driven) }
-            case .undriven:
-                return groups.filter { $0.semantic == OverlaySemantic.coverage(status: .undriven) }
-            case .undriveable:
-                return groups.filter { $0.semantic == OverlaySemantic.coverage(status: .undriveable) }
+            return filteredCoverageGroups(for: level)
+        case .combined:
+            let coverage = filteredCoverageGroups(for: level).map { group in
+                OverlayRenderGroup(
+                    id: "combined-\(group.id)",
+                    overlay: group.overlay,
+                    style: Self.combinedCoverageStyle(from: group.style),
+                    semantic: group.semantic
+                )
             }
+            let trips = (tripOverlayGroupsByLevel[level] ?? []).map { group in
+                OverlayRenderGroup(
+                    id: "combined-\(group.id)",
+                    overlay: group.overlay,
+                    style: Self.combinedTripStyle(from: group.style),
+                    semantic: group.semantic
+                )
+            }
+            return coverage + trips
         }
     }
 
@@ -178,8 +203,13 @@ final class MapTabViewModel {
         isLoading = false
         await loadCoverageAreasIfNeeded()
 
-        if selectedLayer == .coverage, let areaID = selectedCoverageAreaID {
-            await loadCoverageBundle(areaID: areaID)
+        switch selectedLayer {
+        case .coverage, .combined:
+            if let areaID = selectedCoverageAreaID {
+                await loadCoverageBundle(areaID: areaID)
+            }
+        case .trips:
+            break
         }
     }
 
@@ -203,6 +233,19 @@ final class MapTabViewModel {
             }
         case .coverage:
             await refreshCoverageLayer()
+        case .combined:
+            appModel.markSyncStarted()
+            do {
+                let bundle = try await repository.loadTripMapBundle(query: query)
+                allTrips = bundle.trips.sorted { $0.startTime > $1.startTime }
+                updateVisibleTrips()
+                await rebuildTripOverlays(query: query)
+                appModel.markSyncFinished()
+            } catch {
+                appModel.markSyncFailure(error.localizedDescription)
+                errorMessage = error.localizedDescription
+            }
+            await refreshCoverageLayer()
         }
     }
 
@@ -217,6 +260,12 @@ final class MapTabViewModel {
             await loadCoverageAreasIfNeeded()
             if let areaID = selectedCoverageAreaID {
                 await loadCoverageAreaDetailIfNeeded(areaID: areaID, focusCamera: true)
+                await loadCoverageBundle(areaID: areaID)
+            }
+        case .combined:
+            await loadCoverageAreasIfNeeded()
+            if let areaID = selectedCoverageAreaID {
+                await loadCoverageAreaDetailIfNeeded(areaID: areaID, focusCamera: false)
                 await loadCoverageBundle(areaID: areaID)
             }
         }
@@ -361,7 +410,6 @@ final class MapTabViewModel {
     private func rebuildTripOverlays(query: TripQuery) async {
         tripOverlayGroupsByLevel = Self.buildTripOverlayGroups(
             features: allTrips,
-            queryRange: query.dateRange,
             coordinateCache: coordinateCache
         )
     }
@@ -373,15 +421,28 @@ final class MapTabViewModel {
         )
     }
 
+    private func filteredCoverageGroups(for level: GeometryDetailLevel) -> [OverlayRenderGroup] {
+        let groups = coverageOverlayGroupsByLevel[level] ?? []
+        switch coverageFilter {
+        case .all:
+            return groups
+        case .driven:
+            return groups.filter { $0.semantic == .coverage(status: .driven) }
+        case .undriven:
+            return groups.filter { $0.semantic == .coverage(status: .undriven) }
+        case .undriveable:
+            return groups.filter { $0.semantic == .coverage(status: .undriveable) }
+        }
+    }
+
     private static func buildTripOverlayGroups(
         features: [TripMapFeature],
-        queryRange: DateInterval,
         coordinateCache: LRUCoordinateCache
     ) -> [GeometryDetailLevel: [OverlayRenderGroup]] {
         var byLevel: [GeometryDetailLevel: [OverlayRenderGroup]] = [:]
 
         for level in GeometryDetailLevel.allCases {
-            var buckets: [Int: [MKPolyline]] = [:]
+            var polylines: [MKPolyline] = []
             for feature in features {
                 let cacheKey = "trip-\(feature.id)-\(level.rawValue)"
                 let coordinates: [CLLocationCoordinate2D]
@@ -394,25 +455,24 @@ final class MapTabViewModel {
                 }
 
                 guard coordinates.count > 1 else { continue }
-                let bucket = timeBucket(for: feature.startTime, in: queryRange)
                 let polyline = MKPolyline(coordinates: coordinates, count: coordinates.count)
-                buckets[bucket, default: []].append(polyline)
+                polylines.append(polyline)
             }
 
             var groups: [OverlayRenderGroup] = []
-            for bucket in 0 ..< 8 {
-                guard let polylines = buckets[bucket], !polylines.isEmpty else { continue }
+            if !polylines.isEmpty {
                 let overlay = MKMultiPolyline(polylines)
-                let uiColor = tripBucketColor(bucket: bucket)
-                let width = CGFloat(1.4 + Double(bucket) * 0.34)
-                let alpha = CGFloat(min(0.98, 0.50 + (Double(bucket) * 0.07)))
-                let style = OverlayLineStyle(color: uiColor, lineWidth: width, alpha: alpha)
+                let style = OverlayLineStyle(
+                    color: UIColor(red: 0.30, green: 0.85, blue: 1.0, alpha: 1),
+                    lineWidth: 2.8,
+                    alpha: 0.90
+                )
                 groups.append(
                     OverlayRenderGroup(
-                        id: "trip-\(level.rawValue)-\(bucket)",
+                        id: "trip-\(level.rawValue)-all",
                         overlay: overlay,
                         style: style,
-                        semantic: .trip(bucket: bucket)
+                        semantic: .trip(bucket: 0)
                     )
                 )
             }
@@ -478,29 +538,6 @@ final class MapTabViewModel {
         }
     }
 
-    private static func timeBucket(for timestamp: Date, in range: DateInterval) -> Int {
-        let start = range.start.timeIntervalSince1970
-        let end = range.end.timeIntervalSince1970
-        guard end > start else { return 7 }
-
-        let raw = (timestamp.timeIntervalSince1970 - start) / (end - start)
-        let clamped = max(0, min(1, raw))
-        return min(7, max(0, Int(clamped * 7.999)))
-    }
-
-    private static func tripBucketColor(bucket: Int) -> UIColor {
-        let t = max(0, min(1, Double(bucket) / 7.0))
-        let old = (red: 0.22, green: 0.38, blue: 0.60)
-        let recent = (red: 0.30, green: 0.85, blue: 1.0)
-
-        return UIColor(
-            red: old.red + (recent.red - old.red) * t,
-            green: old.green + (recent.green - old.green) * t,
-            blue: old.blue + (recent.blue - old.blue) * t,
-            alpha: 1
-        )
-    }
-
     private static func coverageStyle(for status: CoverageStreetStatus) -> OverlayLineStyle {
         switch status {
         case .driven:
@@ -530,5 +567,23 @@ final class MapTabViewModel {
                 dashPattern: [2, 6]
             )
         }
+    }
+
+    private static func combinedCoverageStyle(from style: OverlayLineStyle) -> OverlayLineStyle {
+        OverlayLineStyle(
+            color: style.color,
+            lineWidth: max(1.2, style.lineWidth * 0.72),
+            alpha: min(0.62, style.alpha * 0.55),
+            dashPattern: style.dashPattern
+        )
+    }
+
+    private static func combinedTripStyle(from style: OverlayLineStyle) -> OverlayLineStyle {
+        OverlayLineStyle(
+            color: style.color,
+            lineWidth: style.lineWidth + 0.45,
+            alpha: min(1.0, max(0.72, style.alpha)),
+            dashPattern: style.dashPattern
+        )
     }
 }

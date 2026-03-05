@@ -112,6 +112,20 @@ enum AppTheme {
     static let chartTertiary = Color(red: 0.30, green: 0.82, blue: 0.55)
 }
 
+enum AppTypography {
+    static let hero = Font.system(size: 28, weight: .black, design: .rounded)
+    static let title = Font.system(size: 21, weight: .heavy, design: .rounded)
+    static let titleCompact = Font.system(size: 17, weight: .bold, design: .rounded)
+    static let section = Font.system(size: 16, weight: .bold, design: .rounded)
+    static let sectionLabel = Font.system(size: 10, weight: .heavy, design: .rounded)
+    static let bodyStrong = Font.system(size: 15, weight: .semibold, design: .rounded)
+    static let body = Font.system(size: 14, weight: .medium, design: .rounded)
+    static let caption = Font.system(size: 12, weight: .semibold, design: .rounded)
+    static let captionHeavy = Font.system(size: 11, weight: .heavy, design: .rounded)
+    static let metric = Font.system(size: 13, weight: .bold, design: .rounded).monospacedDigit()
+    static let metricLarge = Font.system(size: 22, weight: .black, design: .rounded).monospacedDigit()
+}
+
 // MARK: - Gradients
 
 extension LinearGradient {
@@ -324,13 +338,14 @@ struct SectionHeaderView: View {
         HStack(spacing: AppTheme.spacingSM) {
             if let icon {
                 Image(systemName: icon)
-                    .font(.subheadline.weight(.semibold))
+                    .font(AppTypography.caption)
                     .foregroundStyle(tint)
-                    .frame(width: 26, height: 26)
-                    .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .frame(width: 30, height: 30)
+                    .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
             Text(title)
-                .font(.headline.weight(.semibold))
+                .font(AppTypography.titleCompact)
+                .tracking(0.2)
                 .foregroundStyle(AppTheme.textPrimary)
         }
     }
@@ -356,15 +371,15 @@ struct StatCardView: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(value)
-                    .font(.title3.weight(.bold).monospacedDigit())
+                    .font(AppTypography.metricLarge)
                     .foregroundStyle(AppTheme.textPrimary)
                     .contentTransition(.numericText())
 
                 Text(title)
-                    .font(.caption2.weight(.medium))
+                    .font(AppTypography.sectionLabel)
                     .foregroundStyle(AppTheme.textTertiary)
                     .textCase(.uppercase)
-                    .tracking(0.6)
+                    .tracking(0.9)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -383,10 +398,10 @@ struct MetricChipView: View {
     var body: some View {
         HStack(spacing: AppTheme.spacingXS) {
             Image(systemName: icon)
-                .font(.system(size: 9, weight: .semibold))
+                .font(.system(size: 9, weight: .bold))
                 .foregroundStyle(AppTheme.textTertiary)
             Text(value)
-                .font(.caption2.weight(.semibold).monospacedDigit())
+                .font(AppTypography.metric)
                 .foregroundStyle(AppTheme.textSecondary)
         }
         .padding(.horizontal, AppTheme.spacingSM)
@@ -415,11 +430,11 @@ enum AppAppearance {
 
         let normalAttrs: [NSAttributedString.Key: Any] = [
             .foregroundColor: UIColor.white.withAlphaComponent(0.30),
-            .font: UIFont.systemFont(ofSize: 10, weight: .medium),
+            .font: roundedFont(size: 10, weight: .semibold),
         ]
         let selectedAttrs: [NSAttributedString.Key: Any] = [
             .foregroundColor: UIColor(AppTheme.accent),
-            .font: UIFont.systemFont(ofSize: 10, weight: .semibold),
+            .font: roundedFont(size: 10, weight: .bold),
         ]
 
         tabAppearance.stackedLayoutAppearance.normal.iconColor = UIColor.white.withAlphaComponent(0.30)
@@ -437,11 +452,11 @@ enum AppAppearance {
         navAppearance.shadowColor = UIColor.white.withAlphaComponent(0.06)
         navAppearance.titleTextAttributes = [
             .foregroundColor: UIColor.white,
-            .font: UIFont.systemFont(ofSize: 17, weight: .semibold),
+            .font: roundedFont(size: 18, weight: .bold),
         ]
         navAppearance.largeTitleTextAttributes = [
             .foregroundColor: UIColor.white,
-            .font: UIFont.systemFont(ofSize: 32, weight: .bold),
+            .font: roundedFont(size: 34, weight: .black),
         ]
 
         UINavigationBar.appearance().standardAppearance = navAppearance
@@ -450,4 +465,14 @@ enum AppAppearance {
         UINavigationBar.appearance().tintColor = UIColor(AppTheme.accent)
         #endif
     }
+
+    #if canImport(UIKit)
+    private static func roundedFont(size: CGFloat, weight: UIFont.Weight) -> UIFont {
+        let base = UIFont.systemFont(ofSize: size, weight: weight)
+        guard let descriptor = base.fontDescriptor.withDesign(.rounded) else {
+            return base
+        }
+        return UIFont(descriptor: descriptor, size: size)
+    }
+    #endif
 }
