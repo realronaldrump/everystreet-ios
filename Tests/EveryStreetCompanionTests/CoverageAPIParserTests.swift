@@ -284,7 +284,7 @@ final class CoverageNavigationControllerTests: XCTestCase {
         XCTAssertEqual(launcher.launchedTargetIDs, ["cluster-a"])
     }
 
-    func testExcludedSegmentsFilterClusterSuggestions() async {
+    func testExcludedSegmentsFilterClusterSuggestions() async throws {
         let repository = MockCoverageRepository()
         repository.navigationResponses = [makeSuggestionSet(ids: ["cluster-a"], generatedAt: Date(timeIntervalSince1970: 100))]
         let controller = CoverageNavigationController(repository: repository)
