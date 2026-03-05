@@ -5,6 +5,11 @@ import SwiftUI
 @MainActor
 @Observable
 final class CoverageAreaMapViewModel {
+    private struct RenderBudget {
+        let maxItems: Int
+        let maxPoints: Int
+    }
+
     private let areaID: String
     private let repository: CoverageRepository
 
@@ -23,8 +28,10 @@ final class CoverageAreaMapViewModel {
         )
     )
 
+    var zoomBucket: ZoomBucket = .mid
     var filter: CoverageStreetFilter = .all
     var segments: [CoverageStreetSegment] = []
+    var renderedSegments: [CoverageStreetSegment] = []
     var totalInViewport = 0
     var truncated = false
     var isLoading = false
@@ -32,6 +39,10 @@ final class CoverageAreaMapViewModel {
 
     var visibleSegments: [CoverageStreetSegment] {
         segments.filter { filter.matches($0.status) }
+    }
+
+    var isRenderingCapped: Bool {
+        renderedSegments.count < visibleSegments.count
     }
 
     var counts: (driven: Int, undriven: Int, undriveable: Int) {
@@ -78,11 +89,14 @@ final class CoverageAreaMapViewModel {
 
     func update(region: MKCoordinateRegion) {
         currentRegion = region
+        zoomBucket = MapGeometry.zoomBucket(for: region)
+        rebuildRenderedSegments()
         scheduleStreetLoad()
     }
 
     func setFilter(_ filter: CoverageStreetFilter) {
         self.filter = filter
+        rebuildRenderedSegments()
     }
 
     private func scheduleStreetLoad(force: Bool = false) {
@@ -110,6 +124,7 @@ final class CoverageAreaMapViewModel {
             segments = snapshot.segments
             totalInViewport = snapshot.totalInViewport
             truncated = snapshot.truncated
+            rebuildRenderedSegments()
             errorMessage = nil
             isLoading = false
         } catch {
@@ -130,5 +145,42 @@ final class CoverageAreaMapViewModel {
                 longitudeDelta: max((box.maxLon - box.minLon) * 1.35, 0.02)
             )
         )
+    }
+
+    private func rebuildRenderedSegments() {
+        let candidates = visibleSegments
+        let budget = renderBudget(for: zoomBucket)
+        var rendered: [CoverageStreetSegment] = []
+        rendered.reserveCapacity(min(candidates.count, budget.maxItems))
+        var consumedPoints = 0
+
+        for segment in candidates {
+            guard rendered.count < budget.maxItems else { break }
+            let pointCount = segment.coordinates.count
+            guard pointCount > 1 else { continue }
+
+            if consumedPoints + pointCount > budget.maxPoints {
+                if rendered.isEmpty {
+                    rendered.append(segment)
+                }
+                break
+            }
+
+            rendered.append(segment)
+            consumedPoints += pointCount
+        }
+
+        renderedSegments = rendered
+    }
+
+    private func renderBudget(for zoomBucket: ZoomBucket) -> RenderBudget {
+        switch zoomBucket {
+        case .low:
+            return RenderBudget(maxItems: 500, maxPoints: 10_000)
+        case .mid:
+            return RenderBudget(maxItems: 700, maxPoints: 14_000)
+        case .high:
+            return RenderBudget(maxItems: 900, maxPoints: 18_000)
+        }
     }
 }

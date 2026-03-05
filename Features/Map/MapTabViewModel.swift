@@ -14,11 +14,23 @@ enum MapLayerMode: String, CaseIterable, Identifiable {
         case .coverage: "Coverage Streets"
         }
     }
+
+    var shortTitle: String {
+        switch self {
+        case .trips: "Trips"
+        case .coverage: "Coverage"
+        }
+    }
 }
 
 @MainActor
 @Observable
 final class MapTabViewModel {
+    private struct RenderBudget {
+        let maxItems: Int
+        let maxPoints: Int
+    }
+
     private let repository: TripsRepository
     private let coverageRepository: CoverageRepository
     private let coordinateCache: LRUCoordinateCache
@@ -29,6 +41,7 @@ final class MapTabViewModel {
 
     var allTrips: [TripSummary] = []
     var visibleTrips: [TripSummary] = []
+    var renderedTrips: [TripSummary] = []
     var selectedTrip: TripSummary?
 
     var selectedLayer: MapLayerMode = .trips
@@ -36,6 +49,7 @@ final class MapTabViewModel {
     var selectedCoverageAreaID: String?
     var coverageFilter: CoverageStreetFilter = .all
     var coverageSegments: [CoverageStreetSegment] = []
+    var renderedCoverageSegments: [CoverageStreetSegment] = []
     var coverageTotalInViewport = 0
     var coverageTruncated = false
 
@@ -67,6 +81,14 @@ final class MapTabViewModel {
 
     var visibleCoverageSegments: [CoverageStreetSegment] {
         coverageSegments.filter { coverageFilter.matches($0.status) }
+    }
+
+    var isTripRenderingCapped: Bool {
+        zoomBucket != .low && renderedTrips.count < visibleTrips.count
+    }
+
+    var isCoverageRenderingCapped: Bool {
+        renderedCoverageSegments.count < visibleCoverageSegments.count
     }
 
     var coverageCounts: (driven: Int, undriven: Int, undriveable: Int) {
@@ -158,11 +180,13 @@ final class MapTabViewModel {
         case .trips:
             coverageFetchTask?.cancel()
             isCoverageLoading = false
+            updateRenderedTrips()
         case .coverage:
             await loadCoverageAreasIfNeeded()
             if let areaID = selectedCoverageAreaID {
                 await loadCoverageAreaDetailIfNeeded(areaID: areaID, focusCamera: true)
             }
+            updateRenderedCoverageSegments()
             scheduleCoverageStreetFetch(force: true)
         }
     }
@@ -171,6 +195,7 @@ final class MapTabViewModel {
         guard selectedCoverageAreaID != areaID else { return }
         selectedCoverageAreaID = areaID
         coverageSegments = []
+        renderedCoverageSegments = []
         coverageTotalInViewport = 0
         coverageTruncated = false
 
@@ -180,12 +205,14 @@ final class MapTabViewModel {
 
     func setCoverageFilter(_ filter: CoverageStreetFilter) {
         coverageFilter = filter
+        updateRenderedCoverageSegments()
     }
 
     func update(region: MKCoordinateRegion) {
         currentRegion = region
         zoomBucket = MapGeometry.zoomBucket(for: region)
         updateVisibleTrips()
+        updateRenderedCoverageSegments()
 
         if selectedLayer == .coverage {
             scheduleCoverageStreetFetch()
@@ -296,6 +323,7 @@ final class MapTabViewModel {
             coverageSegments = snapshot.segments
             coverageTotalInViewport = snapshot.totalInViewport
             coverageTruncated = snapshot.truncated
+            updateRenderedCoverageSegments()
             coverageErrorMessage = nil
             isCoverageLoading = false
         } catch {
@@ -350,6 +378,109 @@ final class MapTabViewModel {
             .map { $0 }
         } else {
             densityPoints = []
+        }
+
+        updateRenderedTrips()
+    }
+
+    private func updateRenderedTrips() {
+        guard zoomBucket != .low else {
+            renderedTrips = []
+            return
+        }
+
+        let level = geometryLevel(for: zoomBucket)
+        let budget = tripRenderBudget(for: zoomBucket)
+        var rendered: [TripSummary] = []
+        rendered.reserveCapacity(min(visibleTrips.count, budget.maxItems))
+        var consumedPoints = 0
+
+        for trip in visibleTrips {
+            guard rendered.count < budget.maxItems else { break }
+
+            let pointCount = coordinateCount(for: trip, level: level)
+            guard pointCount > 1 else { continue }
+
+            if consumedPoints + pointCount > budget.maxPoints {
+                if rendered.isEmpty {
+                    rendered.append(trip)
+                }
+                break
+            }
+
+            rendered.append(trip)
+            consumedPoints += pointCount
+        }
+
+        renderedTrips = rendered
+    }
+
+    private func updateRenderedCoverageSegments() {
+        let candidates = visibleCoverageSegments
+        let budget = coverageRenderBudget(for: zoomBucket)
+        var rendered: [CoverageStreetSegment] = []
+        rendered.reserveCapacity(min(candidates.count, budget.maxItems))
+        var consumedPoints = 0
+
+        for segment in candidates {
+            guard rendered.count < budget.maxItems else { break }
+            let pointCount = segment.coordinates.count
+            guard pointCount > 1 else { continue }
+
+            if consumedPoints + pointCount > budget.maxPoints {
+                if rendered.isEmpty {
+                    rendered.append(segment)
+                }
+                break
+            }
+
+            rendered.append(segment)
+            consumedPoints += pointCount
+        }
+
+        renderedCoverageSegments = rendered
+    }
+
+    private func geometryLevel(for zoomBucket: ZoomBucket) -> GeometryDetailLevel {
+        switch zoomBucket {
+        case .low: .low
+        case .mid: .medium
+        case .high: .full
+        }
+    }
+
+    private func coordinateCount(for trip: TripSummary, level: GeometryDetailLevel) -> Int {
+        switch level {
+        case .full:
+            return trip.fullGeometry.count
+        case .medium:
+            return trip.mediumGeometry.isEmpty ? trip.fullGeometry.count : trip.mediumGeometry.count
+        case .low:
+            if !trip.lowGeometry.isEmpty { return trip.lowGeometry.count }
+            if !trip.mediumGeometry.isEmpty { return trip.mediumGeometry.count }
+            return trip.fullGeometry.count
+        }
+    }
+
+    private func tripRenderBudget(for zoomBucket: ZoomBucket) -> RenderBudget {
+        switch zoomBucket {
+        case .low:
+            return RenderBudget(maxItems: 0, maxPoints: 0)
+        case .mid:
+            return RenderBudget(maxItems: 260, maxPoints: 28_000)
+        case .high:
+            return RenderBudget(maxItems: 180, maxPoints: 24_000)
+        }
+    }
+
+    private func coverageRenderBudget(for zoomBucket: ZoomBucket) -> RenderBudget {
+        switch zoomBucket {
+        case .low:
+            return RenderBudget(maxItems: 900, maxPoints: 18_000)
+        case .mid:
+            return RenderBudget(maxItems: 1_200, maxPoints: 24_000)
+        case .high:
+            return RenderBudget(maxItems: 1_500, maxPoints: 30_000)
         }
     }
 }

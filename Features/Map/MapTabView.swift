@@ -7,7 +7,8 @@ import UIKit
 struct MapTabView: View {
     @Bindable var appModel: AppModel
     @State private var viewModel: MapTabViewModel
-    @State private var showTripFilters = false
+    @State private var showFilterSheet = false
+    @State private var showBottomTray = true
 
     private let repository: TripsRepository
 
@@ -30,19 +31,22 @@ struct MapTabView: View {
 
     var body: some View {
         ZStack {
+            // MARK: - Map
             Map(position: $viewModel.cameraPosition, interactionModes: .all) {
                 if viewModel.selectedLayer == .trips {
-                    ForEach(viewModel.visibleTrips, id: \.transactionId) { trip in
-                        if routeCoordinates(for: trip).count > 1 {
-                            MapPolyline(coordinates: routeCoordinates(for: trip))
-                                .stroke(
-                                    routeColor(for: trip).opacity(selectedOpacity(for: trip)),
-                                    style: StrokeStyle(
-                                        lineWidth: selectedLineWidth(for: trip),
-                                        lineCap: .round,
-                                        lineJoin: .round
+                    if viewModel.zoomBucket != .low {
+                        ForEach(viewModel.renderedTrips, id: \.transactionId) { trip in
+                            if routeCoordinates(for: trip).count > 1 {
+                                MapPolyline(coordinates: routeCoordinates(for: trip))
+                                    .stroke(
+                                        routeColor(for: trip).opacity(selectedOpacity(for: trip)),
+                                        style: StrokeStyle(
+                                            lineWidth: selectedLineWidth(for: trip),
+                                            lineCap: .round,
+                                            lineJoin: .round
+                                        )
                                     )
-                                )
+                            }
                         }
                     }
 
@@ -57,7 +61,7 @@ struct MapTabView: View {
                         }
                     }
                 } else {
-                    ForEach(viewModel.visibleCoverageSegments) { segment in
+                    ForEach(viewModel.renderedCoverageSegments) { segment in
                         if segment.coordinates.count > 1 {
                             MapPolyline(coordinates: segment.coordinates)
                                 .stroke(
@@ -74,7 +78,7 @@ struct MapTabView: View {
             }
             .mapStyle(
                 .standard(
-                    elevation: .realistic,
+                    elevation: .flat,
                     emphasis: .muted,
                     pointsOfInterest: .excludingAll,
                     showsTraffic: false
@@ -85,41 +89,44 @@ struct MapTabView: View {
             }
             .ignoresSafeArea()
 
+            // MARK: - Loading spinner
             if viewModel.isCurrentLayerLoading {
                 ProgressView()
-                    .controlSize(.large)
+                    .controlSize(.regular)
                     .tint(AppTheme.accent)
-                    .frame(width: 56, height: 56)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous))
+                    .frame(width: 40, height: 40)
+                    .background(.ultraThinMaterial, in: Circle())
             }
 
-            VStack(spacing: AppTheme.spacingSM) {
+            // MARK: - Top controls
+            VStack(spacing: 0) {
                 topBar
-                layerControls
-
-                if viewModel.selectedLayer == .trips {
-                    SyncStatusBanner(state: appModel.syncState)
-                    tripFiltersSection
-                }
+                    .padding(.horizontal, AppTheme.spacingLG)
+                    .padding(.top, AppTheme.spacingXS)
 
                 if let error = viewModel.currentLayerErrorMessage {
                     errorBanner(error)
+                        .padding(.horizontal, AppTheme.spacingLG)
+                        .padding(.top, AppTheme.spacingSM)
                 }
-            }
-            .padding(.horizontal, AppTheme.spacingLG)
-            .padding(.top, AppTheme.spacingSM)
-            .frame(maxHeight: .infinity, alignment: .top)
 
-            Group {
-                if viewModel.selectedLayer == .trips {
-                    tripsBottomTray
-                } else {
-                    coverageBottomTray
-                }
+                Spacer()
             }
-            .padding(.horizontal, AppTheme.spacingLG)
-            .padding(.bottom, 76)
-            .frame(maxHeight: .infinity, alignment: .bottom)
+
+            // MARK: - Bottom tray
+            VStack(spacing: 0) {
+                Spacer()
+
+                Group {
+                    if viewModel.selectedLayer == .trips {
+                        tripsBottomTray
+                    } else {
+                        coverageBottomTray
+                    }
+                }
+                .padding(.horizontal, 0)
+                .padding(.bottom, 0)
+            }
         }
         .toolbar(.hidden, for: .navigationBar)
         .task {
@@ -127,48 +134,21 @@ struct MapTabView: View {
                 await viewModel.load(query: appModel.activeQuery, appModel: appModel)
             }
         }
+        .sheet(isPresented: $showFilterSheet) {
+            filterSheet
+        }
     }
 
-    // MARK: - Top Bar
+    // MARK: - Compact Top Bar
 
     private var topBar: some View {
-        HStack(spacing: AppTheme.spacingMD) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(viewModel.selectedLayer == .trips ? "Trips Map" : "Coverage Streets")
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(AppTheme.textPrimary)
-            }
-
-            Spacer()
-
-            Button {
-                Task {
-                    await viewModel.refreshCurrentLayer(query: appModel.activeQuery, appModel: appModel)
-                }
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(AppTheme.accent)
-                    .frame(width: 36, height: 36)
-                    .background(.ultraThinMaterial, in: Circle())
-                    .overlay(Circle().stroke(Color.white.opacity(0.1), lineWidth: 0.5))
-            }
-            .buttonStyle(.pressable)
-            .sensoryFeedback(.impact(flexibility: .soft), trigger: viewModel.isCurrentLayerLoading)
-        }
-        .glassCard(padding: AppTheme.spacingMD, cornerRadius: AppTheme.radiusMD)
-    }
-
-    private var layerControls: some View {
-        VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
+        HStack(spacing: AppTheme.spacingSM) {
+            // Layer picker — compact segmented control
             Picker(
-                "Map Layer",
+                "Layer",
                 selection: Binding(
                     get: { viewModel.selectedLayer },
                     set: { newLayer in
-                        if newLayer != .trips {
-                            showTripFilters = false
-                        }
                         Task {
                             await viewModel.setLayer(newLayer)
                         }
@@ -176,240 +156,358 @@ struct MapTabView: View {
                 )
             ) {
                 ForEach(MapLayerMode.allCases) { layer in
-                    Text(layer.title).tag(layer)
+                    Text(layer.shortTitle).tag(layer)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 180)
+
+            Spacer()
+
+            // Sync indicator dot (only when syncing/stale/error)
+            syncIndicator
+
+            // Filter button
+            Button {
+                showFilterSheet = true
+            } label: {
+                Image(systemName: "line.3.horizontal.decrease")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(hasActiveFilters ? AppTheme.accent : AppTheme.textSecondary)
+                    .frame(width: 36, height: 36)
+                    .background(.ultraThinMaterial, in: Circle())
+                    .overlay(Circle().stroke(Color.white.opacity(0.08), lineWidth: 0.5))
+                    .overlay(alignment: .topTrailing) {
+                        if hasActiveFilters {
+                            Circle()
+                                .fill(AppTheme.accent)
+                                .frame(width: 7, height: 7)
+                                .offset(x: 1, y: -1)
+                        }
+                    }
+            }
+            .buttonStyle(.pressable)
+
+            // Refresh button
+            Button {
+                Task {
+                    await viewModel.refreshCurrentLayer(query: appModel.activeQuery, appModel: appModel)
+                }
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(AppTheme.accent)
+                    .frame(width: 36, height: 36)
+                    .background(.ultraThinMaterial, in: Circle())
+                    .overlay(Circle().stroke(Color.white.opacity(0.08), lineWidth: 0.5))
+                    .rotationEffect(.degrees(viewModel.isCurrentLayerLoading ? 360 : 0))
+                    .animation(
+                        viewModel.isCurrentLayerLoading
+                            ? .linear(duration: 1).repeatForever(autoreverses: false)
+                            : .default,
+                        value: viewModel.isCurrentLayerLoading
+                    )
+            }
+            .buttonStyle(.pressable)
+        }
+        .padding(.horizontal, AppTheme.spacingMD)
+        .padding(.vertical, AppTheme.spacingSM)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
+                .fill(.ultraThinMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+        )
+    }
+
+    // MARK: - Sync Indicator (replaces full SyncStatusBanner)
+
+    @ViewBuilder
+    private var syncIndicator: some View {
+        switch appModel.syncState {
+        case .syncing:
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(AppTheme.accent)
+                .symbolEffect(.pulse, isActive: true)
+                .frame(width: 28, height: 28)
+                .background(AppTheme.accentMuted, in: Circle())
+        case .stale:
+            Image(systemName: "clock.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(AppTheme.accentWarm)
+                .frame(width: 28, height: 28)
+                .background(AppTheme.accentWarmMuted, in: Circle())
+        case .failed:
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(AppTheme.error)
+                .frame(width: 28, height: 28)
+                .background(AppTheme.error.opacity(0.15), in: Circle())
+        case .idle:
+            EmptyView()
+        }
+    }
+
+    // MARK: - Filter Sheet
+
+    private var filterSheet: some View {
+        NavigationStack {
+            ZStack {
+                LinearGradient.appBackground.ignoresSafeArea()
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: AppTheme.spacingXL) {
+                        // Date & Vehicle filters (shared)
+                        GlobalFilterBar(appModel: appModel, compact: false) {
+                            Task {
+                                await viewModel.load(query: appModel.activeQuery, appModel: appModel)
+                            }
+                        }
+
+                        // Coverage-specific controls
+                        if viewModel.selectedLayer == .coverage {
+                            coverageFilterControls
+                        }
+                    }
+                    .padding(AppTheme.spacingLG)
+                }
+            }
+            .navigationTitle("Filters")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { showFilterSheet = false }
+                        .fontWeight(.semibold)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(AppTheme.background)
+    }
+
+    private var coverageFilterControls: some View {
+        VStack(alignment: .leading, spacing: AppTheme.spacingMD) {
+            Text("COVERAGE AREA")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.textTertiary)
+                .tracking(0.8)
+
+            Menu {
+                if viewModel.coverageAreas.isEmpty {
+                    Text("No coverage areas available")
+                } else {
+                    ForEach(viewModel.coverageAreas) { area in
+                        Button {
+                            Task {
+                                await viewModel.selectCoverageArea(area.id)
+                            }
+                        } label: {
+                            if area.id == viewModel.selectedCoverageAreaID {
+                                Label(area.displayName, systemImage: "checkmark")
+                            } else {
+                                Text(area.displayName)
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: AppTheme.spacingSM) {
+                    Image(systemName: "location.magnifyingglass")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.accent)
+                    Text(viewModel.selectedCoverageArea?.displayName ?? "Choose Area")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(AppTheme.textPrimary)
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(AppTheme.textTertiary)
+                }
+                .padding(AppTheme.spacingMD)
+                .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous))
+            }
+
+            Text("STREET STATUS")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.textTertiary)
+                .tracking(0.8)
+                .padding(.top, AppTheme.spacingSM)
+
+            Picker(
+                "Street Status",
+                selection: Binding(
+                    get: { viewModel.coverageFilter },
+                    set: { viewModel.setCoverageFilter($0) }
+                )
+            ) {
+                ForEach(CoverageStreetFilter.allCases) { filter in
+                    Text(filter.title).tag(filter)
                 }
             }
             .pickerStyle(.segmented)
 
-            if viewModel.selectedLayer == .coverage {
-                HStack(spacing: AppTheme.spacingSM) {
-                    Menu {
-                        if viewModel.coverageAreas.isEmpty {
-                            Text("No coverage areas available")
-                        } else {
-                            ForEach(viewModel.coverageAreas) { area in
-                                Button {
-                                    Task {
-                                        await viewModel.selectCoverageArea(area.id)
-                                    }
-                                } label: {
-                                    if area.id == viewModel.selectedCoverageAreaID {
-                                        Label(area.displayName, systemImage: "checkmark")
-                                    } else {
-                                        Text(area.displayName)
-                                    }
-                                }
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: AppTheme.spacingXS) {
-                            Image(systemName: "location.magnifyingglass")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(AppTheme.accent)
-                            Text(viewModel.selectedCoverageArea?.displayName ?? "Choose Area")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(AppTheme.textPrimary)
-                                .lineLimit(1)
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(AppTheme.textTertiary)
-                        }
-                        .padding(.horizontal, AppTheme.spacingMD)
-                        .padding(.vertical, AppTheme.spacingSM)
-                        .background(Color.white.opacity(0.06), in: Capsule())
-                    }
-
-                    Picker(
-                        "Street Status",
-                        selection: Binding(
-                            get: { viewModel.coverageFilter },
-                            set: { viewModel.setCoverageFilter($0) }
-                        )
-                    ) {
-                        ForEach(CoverageStreetFilter.allCases) { filter in
-                            Text(filter.title).tag(filter)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                }
-
-                HStack(spacing: AppTheme.spacingSM) {
-                    legendChip(label: "Driven", status: .driven)
-                    legendChip(label: "Undriven", status: .undriven)
-                    legendChip(label: "Undriveable", status: .undriveable)
-                }
-            } else {
-                HStack(spacing: AppTheme.spacingSM) {
-                    Text("Layer Controls")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(AppTheme.textTertiary)
-                    Spacer()
-                    Text(selectedVehicleLabel)
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(AppTheme.textSecondary)
-                        .lineLimit(1)
-                    Text("•")
-                        .font(.caption2)
-                        .foregroundStyle(AppTheme.textTertiary)
-                    Text(appModel.activeDateRange.shortLabel)
-                        .font(.caption2.weight(.medium).monospacedDigit())
-                        .foregroundStyle(AppTheme.textSecondary)
-                }
+            HStack(spacing: AppTheme.spacingMD) {
+                legendChip(label: "Driven", status: .driven)
+                legendChip(label: "Undriven", status: .undriven)
+                legendChip(label: "Undriveable", status: .undriveable)
             }
         }
-        .glassCard(padding: AppTheme.spacingMD, cornerRadius: AppTheme.radiusMD)
-    }
-
-    private var tripFiltersSection: some View {
-        VStack(spacing: AppTheme.spacingSM) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    showTripFilters.toggle()
-                }
-            } label: {
-                HStack(spacing: AppTheme.spacingSM) {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(AppTheme.accent)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Trip Filters")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(AppTheme.textPrimary)
-                        Text("\(selectedVehicleLabel) • \(appModel.activeDateRange.shortLabel)")
-                            .font(.caption2.weight(.medium).monospacedDigit())
-                            .foregroundStyle(AppTheme.textTertiary)
-                            .lineLimit(1)
-                    }
-
-                    Spacer()
-
-                    Image(systemName: showTripFilters ? "chevron.up" : "chevron.down")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(AppTheme.textTertiary)
-                }
-            }
-            .buttonStyle(.pressable)
-            .glassCard(padding: AppTheme.spacingMD, cornerRadius: AppTheme.radiusMD)
-
-            if showTripFilters {
-                GlobalFilterBar(appModel: appModel, compact: true) {
-                    Task {
-                        await viewModel.load(query: appModel.activeQuery, appModel: appModel)
-                    }
-                }
-                .transition(.asymmetric(
-                    insertion: .move(edge: .top).combined(with: .opacity),
-                    removal: .opacity
-                ))
-            }
-        }
+        .glassCard(padding: AppTheme.spacingLG, cornerRadius: AppTheme.radiusLG)
     }
 
     // MARK: - Bottom Trays
 
     private var tripsBottomTray: some View {
-        VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
-            HStack {
-                Text("Visible Trips")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(AppTheme.textPrimary)
-                Spacer()
-                Text("\(viewModel.visibleTrips.count)")
-                    .font(.caption.weight(.bold).monospacedDigit())
-                    .foregroundStyle(AppTheme.accent)
-                    .padding(.horizontal, AppTheme.spacingSM)
-                    .padding(.vertical, AppTheme.spacingXS)
-                    .background(AppTheme.accentMuted, in: Capsule())
-            }
+        VStack(alignment: .leading, spacing: 0) {
+            // Tappable header to collapse/expand
+            Button {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    showBottomTray.toggle()
+                }
+            } label: {
+                HStack(spacing: AppTheme.spacingSM) {
+                    Text("\(viewModel.visibleTrips.count)")
+                        .font(.caption.weight(.bold).monospacedDigit())
+                        .foregroundStyle(AppTheme.accent)
+                        .frame(minWidth: 22)
+                        .padding(.horizontal, AppTheme.spacingXS)
+                        .padding(.vertical, 3)
+                        .background(AppTheme.accentMuted, in: Capsule())
 
-            if viewModel.visibleTrips.isEmpty {
-                Text("Move the map to see trips in this area")
-                    .font(.caption)
-                    .foregroundStyle(AppTheme.textTertiary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, AppTheme.spacingMD)
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: AppTheme.spacingSM) {
-                        ForEach(viewModel.visibleTrips.prefix(20)) { trip in
-                            NavigationLink {
-                                TripDetailView(tripID: trip.transactionId, repository: repository)
-                            } label: {
-                                tripCard(trip)
+                    Text("Visible Trips")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.textPrimary)
+
+                    Spacer()
+
+                    Image(systemName: showBottomTray ? "chevron.down" : "chevron.up")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(AppTheme.textTertiary)
+                }
+                .padding(.horizontal, AppTheme.spacingMD)
+                .padding(.vertical, AppTheme.spacingSM)
+            }
+            .buttonStyle(.plain)
+
+            if showBottomTray {
+                VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
+                    if viewModel.isTripRenderingCapped {
+                        Text("Map is rendering \(viewModel.renderedTrips.count) routes for smoother performance.")
+                            .font(.caption2)
+                            .foregroundStyle(AppTheme.warning)
+                            .padding(.horizontal, AppTheme.spacingMD)
+                    }
+
+                    if viewModel.visibleTrips.isEmpty {
+                        Text("Move the map to see trips")
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.textTertiary)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.vertical, AppTheme.spacingSM)
+                            .padding(.horizontal, AppTheme.spacingMD)
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: AppTheme.spacingSM) {
+                                ForEach(viewModel.visibleTrips.prefix(20)) { trip in
+                                    NavigationLink {
+                                        TripDetailView(tripID: trip.transactionId, repository: repository)
+                                    } label: {
+                                        tripCard(trip)
+                                    }
+                                    .buttonStyle(.pressable)
+                                }
                             }
-                            .buttonStyle(.pressable)
+                            .padding(.horizontal, AppTheme.spacingMD)
+                            .padding(.bottom, AppTheme.spacingSM)
                         }
                     }
-                    .padding(.horizontal, 2)
                 }
             }
         }
-        .padding(AppTheme.spacingMD)
         .background(
-            RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
+            UnevenRoundedRectangle(topLeadingRadius: AppTheme.radiusMD, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: AppTheme.radiusMD, style: .continuous)
                 .fill(.ultraThinMaterial)
         )
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
-                .fill(AppTheme.background.opacity(0.7))
-        )
         .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
-                .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
+            UnevenRoundedRectangle(topLeadingRadius: AppTheme.radiusMD, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: AppTheme.radiusMD, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
         )
     }
 
     private var coverageBottomTray: some View {
-        VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
-            HStack {
-                Text(viewModel.selectedCoverageArea?.displayName ?? "Coverage Streets")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(AppTheme.textPrimary)
-                    .lineLimit(1)
-                Spacer()
-                Text("\(viewModel.visibleCoverageSegments.count)")
-                    .font(.caption.weight(.bold).monospacedDigit())
-                    .foregroundStyle(AppTheme.accent)
-                    .padding(.horizontal, AppTheme.spacingSM)
-                    .padding(.vertical, AppTheme.spacingXS)
-                    .background(AppTheme.accentMuted, in: Capsule())
-            }
-
-            if let area = viewModel.selectedCoverageArea {
+        VStack(alignment: .leading, spacing: 0) {
+            // Tappable header
+            Button {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    showBottomTray.toggle()
+                }
+            } label: {
                 HStack(spacing: AppTheme.spacingSM) {
-                    metricChip(title: "Overall", value: String(format: "%.1f%%", area.coveragePercentage), color: AppTheme.accent)
-                    metricChip(title: "Driven", value: "\(viewModel.coverageCounts.driven)", color: streetColor(for: .driven))
-                    metricChip(title: "Undriven", value: "\(viewModel.coverageCounts.undriven)", color: streetColor(for: .undriven))
-                }
+                    Text("\(viewModel.visibleCoverageSegments.count)")
+                        .font(.caption.weight(.bold).monospacedDigit())
+                        .foregroundStyle(AppTheme.accent)
+                        .frame(minWidth: 22)
+                        .padding(.horizontal, AppTheme.spacingXS)
+                        .padding(.vertical, 3)
+                        .background(AppTheme.accentMuted, in: Capsule())
 
-                Text("Viewport: \(viewModel.coverageTotalInViewport) segments")
-                    .font(.caption2.weight(.medium).monospacedDigit())
-                    .foregroundStyle(AppTheme.textTertiary)
+                    Text(viewModel.selectedCoverageArea?.displayName ?? "Coverage")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.textPrimary)
+                        .lineLimit(1)
 
-                if viewModel.coverageTruncated {
-                    Text("Results are capped for this viewport. Zoom in for complete coverage.")
-                        .font(.caption2)
-                        .foregroundStyle(AppTheme.warning)
+                    Spacer()
+
+                    Image(systemName: showBottomTray ? "chevron.down" : "chevron.up")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(AppTheme.textTertiary)
                 }
-            } else {
-                Text("Choose a coverage area in Layer Controls to load street coverage.")
-                    .font(.caption)
-                    .foregroundStyle(AppTheme.textTertiary)
+                .padding(.horizontal, AppTheme.spacingMD)
+                .padding(.vertical, AppTheme.spacingSM)
+            }
+            .buttonStyle(.plain)
+
+            if showBottomTray {
+                VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
+                    if let area = viewModel.selectedCoverageArea {
+                        HStack(spacing: AppTheme.spacingSM) {
+                            metricChip(title: "Overall", value: String(format: "%.1f%%", area.coveragePercentage), color: AppTheme.accent)
+                            metricChip(title: "Driven", value: "\(viewModel.coverageCounts.driven)", color: streetColor(for: .driven))
+                            metricChip(title: "Undriven", value: "\(viewModel.coverageCounts.undriven)", color: streetColor(for: .undriven))
+                        }
+
+                        if viewModel.isCoverageRenderingCapped {
+                            Text("Map is rendering \(viewModel.renderedCoverageSegments.count) streets for smoother performance.")
+                                .font(.caption2)
+                                .foregroundStyle(AppTheme.warning)
+                        }
+
+                        if viewModel.coverageTruncated {
+                            Text("Zoom in for complete coverage")
+                                .font(.caption2)
+                                .foregroundStyle(AppTheme.warning)
+                        }
+                    } else {
+                        Text("Open filters to choose a coverage area")
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.textTertiary)
+                    }
+                }
+                .padding(.horizontal, AppTheme.spacingMD)
+                .padding(.bottom, AppTheme.spacingSM)
             }
         }
-        .padding(AppTheme.spacingMD)
         .background(
-            RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
+            UnevenRoundedRectangle(topLeadingRadius: AppTheme.radiusMD, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: AppTheme.radiusMD, style: .continuous)
                 .fill(.ultraThinMaterial)
         )
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
-                .fill(AppTheme.background.opacity(0.7))
-        )
         .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.radiusLG, style: .continuous)
-                .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
+            UnevenRoundedRectangle(topLeadingRadius: AppTheme.radiusMD, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: AppTheme.radiusMD, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
         )
     }
 
@@ -430,14 +528,14 @@ struct MapTabView: View {
                 .foregroundStyle(AppTheme.textSecondary)
                 .lineLimit(2)
         }
-        .frame(width: 150, alignment: .leading)
-        .padding(AppTheme.spacingMD)
+        .frame(width: 140, alignment: .leading)
+        .padding(AppTheme.spacingSM)
         .background(
-            RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
+            RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous)
                 .fill(Color.white.opacity(0.06))
                 .overlay(
-                    RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+                    RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous)
+                        .stroke(Color.white.opacity(0.06), lineWidth: 0.5)
                 )
         )
     }
@@ -476,17 +574,27 @@ struct MapTabView: View {
     private func errorBanner(_ message: String) -> some View {
         HStack(spacing: AppTheme.spacingSM) {
             Image(systemName: "exclamationmark.triangle.fill")
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(AppTheme.warning)
             Text(message)
                 .font(.caption)
                 .foregroundStyle(AppTheme.textSecondary)
-                .lineLimit(2)
+                .lineLimit(1)
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .glassCard(padding: AppTheme.spacingMD, cornerRadius: AppTheme.radiusMD)
+        .padding(.horizontal, AppTheme.spacingMD)
+        .padding(.vertical, AppTheme.spacingSM)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.radiusSM, style: .continuous)
+                .fill(AppTheme.warning.opacity(0.12))
+        )
     }
 
     // MARK: - Helpers
+
+    private var hasActiveFilters: Bool {
+        appModel.selectedIMEI != nil || appModel.selectedPreset != .sevenDays
+    }
 
     private var geometryLevel: GeometryDetailLevel {
         switch viewModel.zoomBucket {

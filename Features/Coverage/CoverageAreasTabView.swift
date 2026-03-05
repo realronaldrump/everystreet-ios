@@ -301,7 +301,7 @@ private struct CoverageAreaMapPanel: View {
 
             ZStack {
                 Map(position: $viewModel.cameraPosition, interactionModes: .all) {
-                    ForEach(viewModel.visibleSegments) { segment in
+                    ForEach(viewModel.renderedSegments) { segment in
                         if segment.coordinates.count > 1 {
                             MapPolyline(coordinates: segment.coordinates)
                                 .stroke(
@@ -315,7 +315,14 @@ private struct CoverageAreaMapPanel: View {
                         }
                     }
                 }
-                .mapStyle(.standard(elevation: .realistic))
+                .mapStyle(
+                    .standard(
+                        elevation: .flat,
+                        emphasis: .muted,
+                        pointsOfInterest: .excludingAll,
+                        showsTraffic: false
+                    )
+                )
                 .frame(height: 240)
                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusMD, style: .continuous))
                 .overlay(
@@ -343,6 +350,12 @@ private struct CoverageAreaMapPanel: View {
             Text("Viewport: \(viewModel.totalInViewport) segments")
                 .font(.caption2.weight(.medium).monospacedDigit())
                 .foregroundStyle(AppTheme.textTertiary)
+
+            if viewModel.isRenderingCapped {
+                Text("Map is rendering \(viewModel.renderedSegments.count) streets for smoother performance.")
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.warning)
+            }
 
             if viewModel.truncated {
                 Text("Viewport results are capped. Zoom in for complete local detail.")
