@@ -21,7 +21,7 @@ final class MapLocationController: NSObject, @preconcurrency CLLocationManagerDe
     var authorizationStatus: CLAuthorizationStatus
     var currentCoordinate: CLLocationCoordinate2D?
     var trackedPathSegments: [[CLLocationCoordinate2D]] = []
-    var isTripRecording = true
+    var isTripRecording = false
     var locationRevision = 0
     var isResolvingLocation = false
 
