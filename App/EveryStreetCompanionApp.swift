@@ -10,7 +10,10 @@ struct EveryStreetCompanionApp: App {
         do {
             let container = try AppContainer()
             self.container = container
-            _appModel = State(initialValue: AppModel(tripsRepository: container.tripsRepository))
+            _appModel = State(initialValue: AppModel(
+                tripsRepository: container.tripsRepository,
+                authRepository: container.authRepository
+            ))
         } catch {
             fatalError("Failed to initialize app container: \(error)")
         }

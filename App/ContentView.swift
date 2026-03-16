@@ -5,6 +5,18 @@ struct ContentView: View {
     let container: AppContainer
 
     var body: some View {
+        Group {
+            if appModel.isAuthenticated {
+                authenticatedContent
+            } else {
+                AuthenticationView()
+            }
+        }
+        .tint(AppTheme.accent)
+        .preferredColorScheme(.dark)
+    }
+
+    private var authenticatedContent: some View {
         TabView {
             NavigationStack {
                 MapTabView(
@@ -43,7 +55,5 @@ struct ContentView: View {
                 Label("More", systemImage: "ellipsis")
             }
         }
-        .tint(AppTheme.accent)
-        .preferredColorScheme(.dark)
     }
 }

@@ -1,5 +1,9 @@
 import Foundation
 
+extension Notification.Name {
+    static let apiClientUnauthorized = Notification.Name("apiClientUnauthorized")
+}
+
 struct APIClient {
     struct Payload {
         let data: Data
@@ -16,7 +20,15 @@ struct APIClient {
     }
 
     var baseURL: URL
-    var session: URLSession = .shared
+    var session: URLSession = Self.defaultSession
+
+    private static let defaultSession: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.httpShouldSetCookies = true
+        configuration.httpCookieAcceptPolicy = .always
+        configuration.httpCookieStorage = HTTPCookieStorage.shared
+        return URLSession(configuration: configuration)
+    }()
 
     init(baseURL: URL) {
         self.baseURL = baseURL
@@ -73,6 +85,22 @@ struct APIClient {
         return data
     }
 
+    func postForm(path: String, fields: [String: String]) async throws -> Payload {
+        let url = baseURL.appendingPathComponent(path)
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 60
+        request.setValue("application/x-www-form-urlencoded; charset=utf-8", forHTTPHeaderField: "Content-Type")
+
+        var components = URLComponents()
+        components.queryItems = fields.map { URLQueryItem(name: $0.key, value: $0.value) }
+        request.httpBody = components.percentEncodedQuery?.data(using: .utf8)
+
+        let (data, response) = try await session.data(for: request)
+        let http = try validate(response: response, data: data, allowNotModified: false)
+        return Payload(data: data, statusCode: http.statusCode, headers: http.allHeaderFields)
+    }
+
     private func validate(
         response: URLResponse,
         data: Data,
@@ -87,6 +115,9 @@ struct APIClient {
         }
 
         guard (200 ... 299).contains(http.statusCode) else {
+            if http.statusCode == 401 {
+                NotificationCenter.default.post(name: .apiClientUnauthorized, object: nil)
+            }
             let body = String(data: data, encoding: .utf8) ?? ""
             throw APIError.requestFailed(status: http.statusCode, body: body)
         }

@@ -9,6 +9,8 @@
 /* Begin PBXBuildFile section */
 		05F4A40C848D45245AADBC1C /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 323E7416FE2D62E8DFC5E966 /* AppModel.swift */; };
 		06A3707C54FBEE45BCE3BAD8 /* EveryStreetCompanionApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AD21E4CD5CA8E77A7A56A3B /* EveryStreetCompanionApp.swift */; };
+		AB12CD34EF56AB78CD90EF12 /* AuthRepositoryLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12CD34EF56AB78CD90EF22 /* AuthRepositoryLive.swift */; };
+		AB12CD34EF56AB78CD90EF13 /* AuthenticationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB12CD34EF56AB78CD90EF23 /* AuthenticationView.swift */; };
 		0C1A8FE4857E7737A9E6C806 /* CoverageAreaMapViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94579BA64E7B9FCDC55F61D6 /* CoverageAreaMapViewModel.swift */; };
 		0C88AC08B31E4D76918CD51D /* CoordinateCoding.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0EB1E95A962B91573E916C5 /* CoordinateCoding.swift */; };
 		0D224A64821170A2CBEC7319 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 348839150B80CBFB5AB2C886 /* ContentView.swift */; };
@@ -73,6 +75,8 @@
 		10D2E4DDA8FB88C86AC99F26 /* EveryStreetCompanionTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EveryStreetCompanionTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		11921F7E83262DCA6C177DD6 /* CachePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CachePolicy.swift; sourceTree = "<group>"; };
 		14CA7344624A8BECB0D89118 /* SettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewModel.swift; sourceTree = "<group>"; };
+		AB12CD34EF56AB78CD90EF22 /* AuthRepositoryLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthRepositoryLive.swift; sourceTree = "<group>"; };
+		AB12CD34EF56AB78CD90EF23 /* AuthenticationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthenticationView.swift; sourceTree = "<group>"; };
 		15049C6D933B0763BCC60430 /* TripModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripModels.swift; sourceTree = "<group>"; };
 		1CB0440EFAC3FAA3D7B60CE6 /* LRUCoordinateCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LRUCoordinateCache.swift; sourceTree = "<group>"; };
 		20323CC71B58C901A8FC3B4B /* TripDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripDetailViewModel.swift; sourceTree = "<group>"; };
@@ -168,11 +172,20 @@
 		231C30D01FE7A2CFCFB19491 /* Repositories */ = {
 			isa = PBXGroup;
 			children = (
+				AB12CD34EF56AB78CD90EF22 /* AuthRepositoryLive.swift */,
 				2F408EF2E459772997F31738 /* CoverageRepositoryLive.swift */,
 				71B44FC6B096E48BD0BD5536 /* SettingsRepositoryLive.swift */,
 				6A793BEA93609171148FF21F /* TripsRepositoryLive.swift */,
 			);
 			path = Repositories;
+			sourceTree = "<group>";
+		};
+		AB12CD34EF56AB78CD90EF32 /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				AB12CD34EF56AB78CD90EF23 /* AuthenticationView.swift */,
+			);
+			path = Auth;
 			sourceTree = "<group>";
 		};
 		2AABA373681B8F1C414FE722 /* Coverage */ = {
@@ -208,6 +221,7 @@
 		60A08D16E87F1C0A9A55AF85 /* Features */ = {
 			isa = PBXGroup;
 			children = (
+				AB12CD34EF56AB78CD90EF32 /* Auth */,
 				2AABA373681B8F1C414FE722 /* Coverage */,
 				9207555F6CCEE71A4AF4D5AF /* Map */,
 				87BCBE2741EF89D03CA75E2F /* Settings */,
@@ -437,6 +451,8 @@
 			files = (
 				46BBADD5B4F0E1CF6B3D4E86 /* APIClient.swift in Sources */,
 				30C058378AE868E239A0E22B /* APIError.swift in Sources */,
+				AB12CD34EF56AB78CD90EF12 /* AuthRepositoryLive.swift in Sources */,
+				AB12CD34EF56AB78CD90EF13 /* AuthenticationView.swift in Sources */,
 				5ED3019CA6B9619DAA85A3BF /* AppAPIParser.swift in Sources */,
 				8ABFDCBA447CED84388172CC /* AppContainer.swift in Sources */,
 				EE9D65D93CB8BF9D448982E8 /* AppLogger.swift in Sources */,

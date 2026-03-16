@@ -2,6 +2,13 @@ import Foundation
 import CoreLocation
 
 @MainActor
+protocol AuthRepository {
+    func hasActiveSession() async throws -> Bool
+    func login(password: String) async throws
+    func clearSession()
+}
+
+@MainActor
 protocol TripsRepository {
     func loadTrips(query: TripQuery) async throws -> [TripSummary]
     func loadTripDetail(id: String) async throws -> TripDetail
