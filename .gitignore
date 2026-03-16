@@ -33,6 +33,7 @@ Carthage/Build/
 *.log
 *.swp
 *.tmp
+.copilot-tmp/
 
 # Playgrounds
 timeline.xctimeline
@@ -52,3 +53,4 @@ playground.xcworkspace
 *.iml
 EveryStreetCompanion.xcodeproj/project.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
 EveryStreetCompanion.xcodeproj/project.pbxproj
+.vscode/tasks.json
